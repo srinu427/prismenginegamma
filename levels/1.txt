@@ -1,0 +1,187 @@
+# The First 4 Chars in a line shows the type of Geometry/Light data. Each Geometry needs different set of data
+# Note: Vectors like Points and Directions are represented with 3 numbers. Ex. vec3(1, 0, 2) will be 1 0 2.
+# For ease of understanding vectors will be represented as (vec3)<vec_name> in this doc
+#
+#
+#PUVL - Rectangular plane data with center, U, V vectors(sides directions), and length along U,V vectors
+# Structure - PUVL <plane_thickness> <plane_friction> (vec3)<center> (vec3)<u> (vec3)<v> <u_length> <v_length> 
+#
+#PNSP - Convex Polygonal plane data with N points
+# Structure - PNSP <plane_thickness> <plane_friction> <N> N * <(vec3)point>
+#
+#CUVH - Cuboid data with center of cuboid, U,V vectors of top face, length along U,V, Height of cuboid
+# Structure - CUVH <face_thickness> <face_friction> (vec3)<center> (vec3)<u> (vec3)<v> <u_length> <v_length> <height>
+#
+#CNPH - Cylinder data with N-sided top Convex Polygonal Plane and Height of cylinder
+# Structure - CNPH <face_thickness> <face_friction> <N> N * <(vec3)top_face_point> <height>
+#
+#PLES/PLEN - Point light source. PLEN for no shadows, PLES for shadow casting source
+# Structure - PLEN (vec3)<light_position> (vec3)<light_color> 
+#
+#DLES/DLEN - Directional light source. Casts shadows on a specific direction with given fov(in degrees) and aspect. DLEN for no shadows, DLES for shadow casting source
+# Structure - DLEN (vec3)<light_position> (vec3)<light_direction> (vec3)<light_color> <fov> <aspect>
+#
+#LANI - Linear Animation chain for object center with N steps
+# Structure - LANI <N> N * <<time of animstep> (vec3)<init center pos> (vec3)<final center pos>>
+#
+#MDLO - Model in Obj Format
+# Structure - MDLO (vec3)<position> (vec3)<scale in x,y,z> <obj_file_path> <texture_file_path> <normal_map_path>
+#
+
+#DLEN -24 10 10  0 0 1  10 0 0  90 1
+#DLEN 24 10 10  0 0 1  0 10 0  90 1
+DLES 5 10 20  0 0 -1  10 10 10  90 1
+
+# Floors and roofs
+CUVH 0.1 100  0 -5 0  0 0 1  1 0 0  100 50 10
+#LANI 2  2000  0 -5 0  0 0 0  2000  0 0 0  0 -5 0
+#LANI 2  2000  0 0 0  0 0 10  2000  0 0 10  0 0 0
+PUVL 0.1 1  0 60 0  0 0 1  -1 0 0  100 50 #roof
+
+PNSP 0.1 100 4  -25 0 -50  0 0 -50  -25 0 -100  -50 0 -100
+PNSP 0.1 1 4  -25 60 -50  -50 60 -100  -25 60 -100  0 60 -50
+
+PNSP 0.1 100 4  -50 0 -100  0 0 -100  0 0 -200  -50 0 -200
+PNSP 0.1 1 4  -50 60 -100  -50 60 -200  0 60 -200  0 60 -100
+
+PNSP 0.1 100 4  0 0 -50  50 0 -50  50 0 -200  0 0 -200
+PNSP 0.1 1 4  0 60 -50  0 60 -200  50 60 -200  50 60 -50
+
+# plats
+CUVH 0.1 100  -20 29.5 40  0 0 1  1 0 0  20 10 1
+CUVH 0.1 100  20 29.5 20  0 0 1  1 0 0  60 10 1
+CUVH 0.1 100  -20 29.5 -15  0 0 1  1 0 0  70 10 1
+CNPH 0.1 100 4  15 30 -40  25 30 -40  25 30 -60  15 30 -60  2
+HIDE
+CNPH 0.1 100 4  15 0 -10  25 0 -10  25 30 -40  15 30 -40  2
+MDLO 20 25 -36  1 1 1 models/starts1r.obj textures/lolol1.png textures/lnmap1.png
+
+# walls
+PNSP 0.1 1 4  0 0 -50  0 60 -50  -25 60 -100  -25 0 -100
+PNSP 0.1 1 4  -50 0 -100  -50 60 -100  -25 60 -50  -25 0 -50
+#PUVL 0.1 1  0 60 0  0 0 1  -1 0 0  100 50
+PUVL 0.1 1  25 30 0  0 0 1  0 1 0  100 60
+MDLO 0 0 0  1 1 1 models/r1w1.obj textures/ptex1.png textures/pnmap1.png
+PUVL 0.1 1  -25 30 0  0 0 -1  0 1 0  100 60
+MDLO 0 0 0  1 1 1 models/r1w2.obj textures/ptex1.png textures/pnmap1.png
+PUVL 0.1 1  0 30 50  -1 0 0  0 1 0  50 60
+MDLO 0 0 0  1 1 1 models/r1w3.obj textures/ptex1.png textures/pnmap1.png
+
+
+# plats walk
+#CNPH 0.1 10 4  0 1 -5  -0.5 1 -6  -1.3994427 1 -5.552787  -0.8994427 1 -4.552787 0.1
+
+# walls 2
+PNSP 0.1 1 4  -25 60 -100  0 60 -100  0 0 -100  -25 0 -100
+PNSP 0.1 1 4  -50 60 -100  -50 0 -100  -50 0 -200  -50 60 -200
+PNSP 0.1 1 4  -1 30 -200  -1 0 -200  -1 0 -100  -1 30 -100
+PNSP 0.1 1 4  -1 60 -160  -1 30 -160  -1 30 -100  -1 60 -100
+
+CNPH 0.1 1 4  -50 30 -200  -50 0 -200  0 0 -200  0 30 -200 1
+CNPH 0.1 1 4  -50 60 -200  -50 30 -200  -20 30 -200  -20 60 -200 1
+
+#plats 2
+CNPH 0.1 100 4  -50 30 -120  -25 30 -120  -25 30 -150  -50 30 -150  1 
+CNPH 0.1 100 4  -25 30 -125  -10 15 -125  -10 15 -135  -25 30 -135  1
+CNPH 0.1 100 4  -10 15 -125  -1 15 -125  -1 15 -135  -10 15 -135  1
+CNPH 0.1 100 4  -10 15 -125  -10 0 -110  -1 0 -110  -1 15 -125  1
+DLEN  -25 40 -130  0 1 0  4 2 5  90 1
+#DLEN  -25 40 -195  0 -1 1  4 4 4  90 1
+
+# walls 3
+PNSP 0.1 1 4  0 0 -50  0 0 -200  0 30 -200  0 30 -50
+PNSP 0.1 1 4  0 30 -50  0 30 -160  0 60 -160  0 60 -50
+PNSP 0.1 1 4  0 60 -160  0 30 -160  -1 30 -160  -1 60 -160
+
+CNPH 0.1 1 4  0 0 -200  50 0 -200  50 30 -200  0 30 -200 1
+CNPH 0.1 1 4  20 30 -200  50 30 -200  50 60 -200  20 60 -200 1
+
+PNSP 0.1 1 4  50 60 -50  50 60 -200  50 0 -200  50 0 -50
+PNSP 0.1 1 4  25 60 -50  50 60 -50  50 0 -50  25 0 -50
+
+#plats 3
+CNPH 0.1 100 4  -20 30 -160  20 30 -160  20 30 -200  -20 30 -200  1
+CNPH 0.1 100 4  30 30 -160  50 30 -160  50 30 -200  30 30 -200  1
+CNPH 0.1 100 4  0 30 -90  50 30 -90  50 30 -110  0 30 -110  1
+CNPH 0.1 100 4  15 30 -120  35 30 -120  35 30 -140  15 30 -140  30 
+CNPH 0.1 100 4  0 15 -125  15 15 -125  15 15 -135  0 15 -135  15
+DLEN  20 40 -130  0 1 0  0 10 10  90 1
+#DLEN  25 40 -195  0 -1 1  4 4 4  90 1
+
+
+#floors 4
+CNPH 0.1 100 4  -20 30 -200  20 30 -200  20 30 -240  -20 30 -240  1
+PNSP 0.1 100 4  20 0 -200  50 0 -200  50 0 -360  20 0 -360
+PNSP 0.1 1 4  -50 120 -200  -50 120 -400  50 120 -400  50 120 -200
+
+#walls 4
+CNPH 0.1 1 4  50 60 -201  -50 60 -201  -50 120 -201  50 120 -201 1
+DLEN  0 75 -205  0 1 0  6 6 4  90 1
+
+PNSP 0.1 1 4  -50 0 -200  -50 0 -400  -50 120 -400  -50 120 -200
+
+PNSP 0.1 1 4  50 0 -200  50 120 -200  50 120 -210  50 0 -210
+PNSP 0.1 1 4  50 0 -210  50 30 -210  50 30 -220  50 0 -220
+PNSP 0.1 1 4  50 50 -210  50 120 -210  50 120 -220  50 50 -220
+PNSP 0.1 1 4  50 0 -220  50 120 -220  50 120 -320  50 0 -320
+PNSP 0.1 1 4  50 0 -320  50 10 -320  50 10 -330  50 0 -330
+PNSP 0.1 1 4  50 30 -320  50 120 -320  50 120 -330  50 30 -330
+PNSP 0.1 1 4  50 0 -330  50 120 -330  50 120 -360  50 0 -360
+PNSP 0.1 1 4  50 0 -360  50 60 -360  50 60 -370  50 0 -370
+PNSP 0.1 1 4  50 80 -360  50 120 -360  50 120 -370  50 80 -370
+PNSP 0.1 1 4  50 0 -370  50 120 -370  50 120 -400  50 0 -400
+
+CNPH 0.1 1 4  50 0 -400  50 90 -400  -50 90 -400  -50 0 -400 1
+CNPH 0.1 1 4  50 90 -400  50 120 -400  -30 120 -400  -30 90 -400 1
+DLEN  -40 105 -390  0 1 0  0 4 0  90 1
+
+#tunnels 4
+DLES  50 20 -325  -1 0 0  0 0 6  90 1
+PNSP 0.1 100 4  50 10 -320  70 10 -320  70 10 -330  50 10 -330
+PNSP 0.1 1 4  50 30 -330  70 30 -330  70 30 -320  50 30 -320
+PNSP 0.1 1 4  50 10 -320  50 30 -320  70 30 -320  70 10 -320
+PNSP 0.1 1 4  50 10 -330  60 10 -330  60 30 -330  50 30 -330
+
+CNPH 0.1 100 4  70 10 -300  70 10 -360  60 10 -360  60 10 -300 1
+PNSP 0.1 1 4  70 10 -320  70 30 -320  70 30 -350  70 10 -350
+PNSP 0.1 1 4  60 10 -330  60 10 -370  60 30 -370  60 30 -330
+PNSP 0.1 1 4  60 30 -330  60 30 -360  70 30 -360  70 30 -330
+
+PNSP 0.1 100 4  70 10 -350  90 10 -350  90 10 -360  70 10 -360
+
+PNSP 0.1 100 4  60 -10 -370  60 -10 -300  70 -10 -300  70 -10 -370
+PNSP 0.1 1 4  60 10 -370  60 10 -300  60 -10 -300  60 -10 -370
+PNSP 0.1 1 4  70 10 -370  70 -10 -370  70 -10 -300  70 10 -300
+
+PNSP 0.1 100 4  60 -10 -300  60 30 -220  70 30 -220  70 -10 -300
+PNSP 0.1 1 4  60 10 -300  70 10 -300  70 50 -220  60 50 -220
+PNSP 0.1 1 4  60 10 -300  60 50 -220  60 30 -220  60 -10 -300
+PNSP 0.1 1 4  70 10 -300  70 -10 -300  70 30 -220  70 50 -220
+
+DLEN  65 40 -215  -1 0 0  6 0 6  90 1
+PNSP 0.1 100 4  50 30 -210  70 30 -210  70 30 -220  50 30 -220
+PNSP 0.1 1 4  50 50 -210  50 50 -220  70 50 -220  70 50 -210
+PNSP 0.1 1 4  50 50 -220  50 30 -220  60 30 -220  60 50 -220
+PNSP 0.1 1 4  50 50 -210  70 50 -210  70 30 -210  50 30 -210
+PNSP 0.1 1 4  70 50 -210  70 50 -220  70 30 -220  70 30 -210
+
+PNSP 0.1 100 4  50 60 -360  60 60 -360  60 60 -370  50 60 -370
+PNSP 0.1 1 4  50 80 -360  50 80 -370  70 80 -370  70 80 -360
+PNSP 0.1 1 4  70 80 -360  70 80 -370  70 -10 -370  70 -10 -360
+PNSP 0.1 1 4  60 60 -360  60 -10 -360  60 -10 -370  60 60 -370
+PNSP 0.1 1 4  70 80 -370  50 80 -370  50 60 -370  70 60 -370
+PNSP 0.1 1 4  70 80 -360  70 60 -360  50 60 -360  50 80 -360
+PNSP 0.1 1 4  70 60 -370  60 60 -370  60 -10 -370  70 -10 -370
+PNSP 0.1 1 4  70 60 -360  70 30 -360  60 30 -360  60 60 -360
+
+#plats 4
+CNPH 0.1 100 4  -15 30 -250  15 30 -250  15 30 -280  -15 30 -280  1
+LANI 2  3000  0 30 -265  0 60 -265  3000  0 60 -265  0 30 -265
+
+CNPH 0.1 100 4  -50 75 -300  -20 75 -300  -20 75 -330  -50 75 -330  1
+LANI 2  3000  -35 75 -315  -35 45 -315  3000  -35 45 -315  -35 75 -315
+
+CNPH 0.1 100 4  -5 60 -340  25 60 -340  25 60 -370  -5 60 -370  1
+LANI 2  3000  20 60 -355  20 90 -355  3000  20 90 -355  20 60 -355
+
+CNPH 0.1 100 4  -50 90 -380  50 90 -380  50 90 -400  -50 90 -400  1
