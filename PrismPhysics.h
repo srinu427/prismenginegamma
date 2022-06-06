@@ -1,5 +1,6 @@
 #pragma once
 #include "CollisionStructs.h"
+#include "SimpleThreadPooler.h"
 #include <mutex>
 
 using namespace collutils;
@@ -16,6 +17,8 @@ public:
 
 	std::mutex new_mesh_lock;
 
+	SimpleThreadPooler* thread_pool;
+
 	PrismPhysics();
 	~PrismPhysics();
 
@@ -29,10 +32,11 @@ public:
 	//plane
 	void gen_and_add_pcmesh(std::vector<glm::vec3> plane_points, float face_thickness, float face_friction, bool dynm = false);
 	CollCache get_sep_plane(PolyCollMesh* pm1, PolyCollMesh* pm2);
+	void validate_spl_dl(int did, int lid, bool* res);
 	void run_physics(int rt_ms);
 
 private:
-	void advance_mesh_one_step(PolyCollMesh* pm);
+	static void advance_mesh_one_step(PolyCollMesh* pm);
 	void run_physics_one_step();
 };
 

@@ -86,6 +86,9 @@ namespace collutils {
 
 		bool controlled = false;
 
+		std::string coll_behav = "physics";
+		std::vector<std::string> coll_behav_args;
+
 
 		PolyCollMesh();
 		PolyCollMesh(PolyCollMesh* pcm);
@@ -116,7 +119,8 @@ namespace collutils {
 		glm::vec3 _dir;
 		glm::vec3 _vel;
 		glm::vec3 _acc;
-		float friction;
+		float friction = 0;
+		float epsilon = 0;
 	};
 
 	struct CollCache {

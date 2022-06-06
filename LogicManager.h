@@ -41,8 +41,12 @@ private:
 	collutils::PolyCollMesh* player;
 	collutils::PolyCollMesh* player_future;
 	bool in_air = false;
+	bool last_f_in_ground = false;
 	bool have_double_jump = true;
 	float gravity = -100;
+
+	glm::vec3 ground_normal = glm::vec3(0);
+	int ground_plane = -1;
 
 	std::unordered_map<std::string, ModelData> mobjects;
 	std::vector<GPULight> plights;

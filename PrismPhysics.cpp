@@ -1,11 +1,25 @@
 #include "PrismPhysics.h"
 
+void move_mesh_out_plane(PolyCollMesh* pm1, glm::vec4 plane_eq, float epsilon) {
+	float move_dist = epsilon;
+	for (int i = 0; i < pm1->verts_size; i++) {
+		float vdist = glm::dot(plane_eq, glm::vec4(pm1->verts[i], 1));
+		if (vdist < move_dist) {
+			move_dist = vdist;
+		}
+	}
+	pm1->apply_displacement((-move_dist + (epsilon * 0.9f)) * glm::normalize(glm::vec3(plane_eq)));
+}
+
 PrismPhysics::PrismPhysics()
 {
 	dmeshes = new std::vector<PolyCollMesh*>();
 	dmeshes_future = new std::vector<PolyCollMesh*>();
 	lmeshes = new std::vector<PolyCollMesh*>();
 	lmeshes_future = new std::vector<PolyCollMesh*>();
+
+	thread_pool = new SimpleThreadPooler(4);
+	thread_pool->run();
 }
 
 PrismPhysics::~PrismPhysics()
@@ -14,6 +28,8 @@ PrismPhysics::~PrismPhysics()
 	delete dmeshes_future;
 	delete lmeshes;
 	delete lmeshes_future;
+
+	delete thread_pool;
 }
 
 void PrismPhysics::add_pcmesh(PolyCollMesh* pcmesh, bool dynm)
@@ -370,7 +386,7 @@ CollCache PrismPhysics::get_sep_plane(PolyCollMesh* pm1, PolyCollMesh* pm2)
 		found = true;
 		for (int j = 0; j < pm2->verts_size; j++) {
 			float dist = glm::dot(pm1->faces[i].equation, glm::vec4(pm2->verts[j], 1));
-			if (dist < pm1->face_epsilon) {
+			if (dist <= pm1->face_epsilon) {
 				found = false;
 				break;
 			}
@@ -391,7 +407,7 @@ CollCache PrismPhysics::get_sep_plane(PolyCollMesh* pm1, PolyCollMesh* pm2)
 		found = true;
 		for (int j = 0; j < pm1->verts_size; j++) {
 			float dist = glm::dot(pm2->faces[i].equation, glm::vec4(pm1->verts[j], 1));
-			if (dist < pm2->face_epsilon) {
+			if (dist <= pm2->face_epsilon) {
 				found = false;
 				break;
 			}
@@ -412,7 +428,7 @@ CollCache PrismPhysics::get_sep_plane(PolyCollMesh* pm1, PolyCollMesh* pm2)
 		int in_p = 0;
 		for (int j = 0; j < pm2->verts_size; j++) {
 			float dist = glm::dot(pm1->faces[i].equation, glm::vec4(pm2->verts[j], 1));
-			if (dist < pm1->face_epsilon) {
+			if (dist <= pm1->face_epsilon) {
 				in_p++;
 			}
 		}
@@ -457,6 +473,7 @@ glm::vec3 apply_dbounds_vel(glm::vec3 vec_to_bound, std::vector<DynBound> dbound
 	for (int cdi = 0; cdi < dbounds.size(); cdi++) {
 		if (glm::dot(vec_to_bound, dbounds[cdi]._dir) < glm::dot(dbounds[cdi]._dir, dbounds[cdi]._vel)) {
 			found_bounded = false;
+			break;
 		}
 	}
 	if (found_bounded) {
@@ -662,13 +679,14 @@ glm::vec3 apply_dbounds_acc(glm::vec3 vec_to_bound, std::vector<DynBound> dbound
 void PrismPhysics::run_physics_one_step()
 {
 	new_mesh_lock.lock();
+	for (int i = 0; i < lmeshes->size(); i++) {
+		thread_pool->add_task(&advance_mesh_one_step, lmeshes_future->at(i));
+	}
+
 	std::vector<std::vector<DynBound>> dbounds = std::vector<std::vector<DynBound>>(dmeshes->size());
 	std::vector<std::vector<DynBound>> fric_dbounds = std::vector<std::vector<DynBound>>(dmeshes->size());
 	
-
-	for (int i = 0; i < lmeshes->size(); i++) {
-		advance_mesh_one_step((*lmeshes_future)[i]);
-	}
+	thread_pool->wait_till_done();
 
 	for (int i = 0; i < dmeshes->size(); i++) {
 		(*dmeshes_future)[i]->_bvel = (*dmeshes_future)[i]->_vel;
@@ -686,7 +704,7 @@ void PrismPhysics::run_physics_one_step()
 				if (tmp_cc.m1side) {
 					tmp_spl = lmeshes_future->at(j)->faces[tmp_cc.sep_plane_idx].equation;
 					for (int k = 0; k < dmeshes_future->at(i)->verts_size; k++) {
-						if (glm::dot(tmp_spl, glm::vec4(dmeshes_future->at(i)->verts[k], 1)) < lmeshes_future->at(j)->face_epsilon) {
+						if (glm::dot(tmp_spl, glm::vec4(dmeshes_future->at(i)->verts[k], 1)) <= lmeshes_future->at(j)->face_epsilon) {
 							spl_invalid = true;
 							break;
 						}
@@ -695,7 +713,7 @@ void PrismPhysics::run_physics_one_step()
 				if (tmp_cc.m2side) {
 					tmp_spl = dmeshes_future->at(i)->faces[tmp_cc.sep_plane_idx].equation;
 					for (int k = 0; k < lmeshes_future->at(j)->verts_size; k++) {
-						if (glm::dot(tmp_spl, glm::vec4(lmeshes_future->at(j)->verts[k], 1)) < dmeshes_future->at(i)->face_epsilon) {
+						if (glm::dot(tmp_spl, glm::vec4(lmeshes_future->at(j)->verts[k], 1)) <= dmeshes_future->at(i)->face_epsilon) {
 							spl_invalid = true;
 							break;
 						}
@@ -706,23 +724,85 @@ void PrismPhysics::run_physics_one_step()
 			if (spl_invalid) {
 				CollCache new_cc = get_sep_plane((*lmeshes_future)[j], (*dmeshes_future)[i]);
 				if (!(new_cc.m1side || new_cc.m2side)) {
-					DynBound tmp_db;
-					tmp_db._plane = (glm::dot(glm::vec4((*dmeshes)[i]->_center, 1), tmp_cc.sep_plane) > 0) ? tmp_cc.sep_plane : -tmp_cc.sep_plane;
-					tmp_db._dir = glm::vec3(tmp_db._plane);
-					tmp_db._vel = (*lmeshes_future)[j]->_vel;
-					tmp_db._acc = (*lmeshes_future)[j]->_acc;
-					tmp_db.friction = (*lmeshes_future)[j]->friction;
-					dbounds[i].push_back(tmp_db);
+					if (lmeshes_future->at(j)->coll_behav == "physics") {
+						DynBound tmp_db;
+						tmp_db._plane = (glm::dot(glm::vec4((*dmeshes)[i]->_center, 1), tmp_cc.sep_plane) > 0) ? tmp_cc.sep_plane : -tmp_cc.sep_plane;
+						tmp_db._dir = glm::vec3(tmp_db._plane);
+						tmp_db._vel = (*lmeshes_future)[j]->_vel;
+						tmp_db._acc = (*lmeshes_future)[j]->_acc;
+						tmp_db.friction = (*lmeshes_future)[j]->friction;
+						tmp_db.epsilon = (*lmeshes_future)[j]->face_epsilon;
+						dbounds[i].push_back(tmp_db);
 
-					tmp_db._vel = glm::vec3(0);
-					tmp_db._acc = glm::vec3(0);
-					fric_dbounds[i].push_back(tmp_db);
+						tmp_db._vel = glm::vec3(0);
+						tmp_db._acc = glm::vec3(0);
+						fric_dbounds[i].push_back(tmp_db);
+					}
+					else if (lmeshes_future->at(j)->coll_behav == "animself") {
+						if (lmeshes_future->at(j)->coll_behav_args.size() > 0 && lmeshes_future->at(j)->running_anims.size() == 0) {
+							lmeshes_future->at(j)->running_anims.push_back(lmeshes_future->at(j)->coll_behav_args[0]);
+						}
+						DynBound tmp_db;
+						tmp_db._plane = (glm::dot(glm::vec4((*dmeshes)[i]->_center, 1), tmp_cc.sep_plane) > 0) ? tmp_cc.sep_plane : -tmp_cc.sep_plane;
+						tmp_db._dir = glm::vec3(tmp_db._plane);
+						tmp_db._vel = (*lmeshes_future)[j]->_vel;
+						tmp_db._acc = (*lmeshes_future)[j]->_acc;
+						tmp_db.friction = (*lmeshes_future)[j]->friction;
+						tmp_db.epsilon = (*lmeshes_future)[j]->face_epsilon;
+						dbounds[i].push_back(tmp_db);
+
+						tmp_db._vel = glm::vec3(0);
+						tmp_db._acc = glm::vec3(0);
+						fric_dbounds[i].push_back(tmp_db);
+					}
+					else if (lmeshes_future->at(j)->coll_behav == "animremote") {
+						if (lmeshes_future->at(j)->coll_behav_args.size() > 1) {
+							int emi = stoi(lmeshes_future->at(j)->coll_behav_args[1]);
+							if (lmeshes_future->at(emi)->running_anims.size() == 0) {
+								lmeshes_future->at(emi)->running_anims.push_back(lmeshes_future->at(j)->coll_behav_args[0]);
+							}
+						}
+						DynBound tmp_db;
+						tmp_db._plane = (glm::dot(glm::vec4((*dmeshes)[i]->_center, 1), tmp_cc.sep_plane) > 0) ? tmp_cc.sep_plane : -tmp_cc.sep_plane;
+						tmp_db._dir = glm::vec3(tmp_db._plane);
+						tmp_db._vel = (*lmeshes_future)[j]->_vel;
+						tmp_db._acc = (*lmeshes_future)[j]->_acc;
+						tmp_db.friction = (*lmeshes_future)[j]->friction;
+						tmp_db.epsilon = (*lmeshes_future)[j]->face_epsilon;
+						dbounds[i].push_back(tmp_db);
+
+						tmp_db._vel = glm::vec3(0);
+						tmp_db._acc = glm::vec3(0);
+						fric_dbounds[i].push_back(tmp_db);
+					}
+					else if (lmeshes_future->at(j)->coll_behav == "kill" && i==0) {
+						glm::vec3 rspn_tran = glm::vec3(0);
+						rspn_tran = glm::vec3(10, 10, 10) - dmeshes_future->at(0)->_center;
+						dmeshes_future->at(0)->apply_displacement(rspn_tran);
+						dmeshes_future->at(0)->_vel = glm::vec3(0);
+						dmeshes_future->at(0)->_bvel = glm::vec3(0);
+
+						rspn_tran = glm::vec3(10, 10, 10) - dmeshes->at(0)->_center;
+						dmeshes->at(0)->apply_displacement(rspn_tran);
+						dmeshes->at(0)->_vel = glm::vec3(0);
+						dmeshes->at(0)->_bvel = glm::vec3(0);
+
+						for (int i = 0; i < dmeshes->size() - 1; i++) {
+							dd_ccache[0][i] = get_sep_plane(dmeshes->at(0), dmeshes->at(i));
+						}
+						for (int i = 0; i < lmeshes->size(); i++) {
+							dl_ccache[0][i] = get_sep_plane(lmeshes->at(i), dmeshes->at(0));
+						}
+						break;
+					}
 				}
 				dl_ccache[i][j] = new_cc;
 			}
 		}
 		if (dbounds[i].size() > 0) {
-			(*(*dmeshes_future)[i]) = (*(*dmeshes)[i]);
+			for (int dbfi = 0; dbfi < dbounds[i].size(); dbfi++) {
+				move_mesh_out_plane((*dmeshes_future)[i], dbounds[i][dbfi]._plane, dbounds[i][dbfi].epsilon);
+			}
 			(*dmeshes_future)[i]->_bvel = apply_dbounds_vel((*dmeshes_future)[i]->_vel, dbounds[i]);
 			(*dmeshes_future)[i]->_bacc = apply_dbounds_vel((*dmeshes_future)[i]->_acc, dbounds[i]);
 
@@ -774,7 +854,7 @@ void PrismPhysics::run_physics_one_step()
 				(*dmeshes_future)[i]->_vel = (*dmeshes_future)[i]->_bvel;
 				(*dmeshes_future)[i]->_bacc += friction;
 
-				advance_mesh_one_step((*dmeshes_future)[i]);
+				//advance_mesh_one_step((*dmeshes_future)[i]);
 				(*dmeshes_future)[i]->_vel = (*dmeshes_future)[i]->_bvel;
 
 				for (int k = 0; k < friction_end_list.size(); k++) {
@@ -783,7 +863,7 @@ void PrismPhysics::run_physics_one_step()
 			}
 			else {
 				(*dmeshes_future)[i]->_vel = (*dmeshes_future)[i]->_bvel;
-				advance_mesh_one_step((*dmeshes_future)[i]);
+				//advance_mesh_one_step((*dmeshes_future)[i]);
 				(*dmeshes_future)[i]->_vel = (*dmeshes_future)[i]->_bvel;
 			}
 			

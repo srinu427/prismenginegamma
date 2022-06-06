@@ -152,6 +152,11 @@ void collutils::PolyCollMesh::updateAnim(std::string animName, int gap_ms)
 	apply_displacement(disp);
 	_vel = anims[animName].getNextVelHint();
 	_bvel = anims[animName].getNextVelHint();
+	if (animLRS.anim_finished) {
+		running_anims.clear();
+		_vel = glm::vec3(0);
+		_bvel = glm::vec3(0);
+	}
 }
 
 int collutils::PolyCollMesh::getAnimEventTime(std::string animName)

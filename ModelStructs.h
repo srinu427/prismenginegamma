@@ -15,6 +15,8 @@ struct LRS {
 	glm::mat4 rotate = glm::mat4{ 1.0f };
 
 	glm::mat4 getTMatrix();
+
+	bool anim_finished = false;
 };
 
 struct BoneAnimStep {
@@ -36,6 +38,7 @@ public:
 	int curr_time = 0;
 	int total_time;
 	int curr_step = 0;
+	bool loop_anim = true;
 
 	LRS transformAfterGap(int gap_ms);
 	int getNextEventTime();

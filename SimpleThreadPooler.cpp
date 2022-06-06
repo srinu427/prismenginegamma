@@ -1,10 +1,16 @@
 #include "SimpleThreadPooler.h"
+#include "iostream"
 
 SimpleThreadPooler::SimpleThreadPooler(uint32_t max_threads)
 {
 	thread_limit = max_threads;
 	_wthreads.resize(thread_limit);
 	_rem_tasks.resize(MAX_TASKS);
+}
+
+SimpleThreadPooler::~SimpleThreadPooler()
+{
+	stop();
 }
 
 //template<typename F, typename ...Fargs>
@@ -36,6 +42,7 @@ void SimpleThreadPooler::do_work()
 void SimpleThreadPooler::run()
 {
 	stop_work = false;
+	//std::cout << rti << ',' << rti << '\n';
 	for (int i = 0; i < thread_limit; i++) {
 		_wthreads[i] = new std::thread(&SimpleThreadPooler::do_work, this);
 	}
@@ -52,11 +59,25 @@ void SimpleThreadPooler::stop()
 			stop_work = true;
 
 			for (int i = 0; i < thread_limit; i++) {
-				if (_wthreads[i]->joinable()) _wthreads[i]->join();
-				delete _wthreads[i];
+				if (_wthreads[i] != NULL && _wthreads[i]->joinable()) {
+					_wthreads[i]->join();
+					delete _wthreads[i];
+				}
 			}
 			break;
 		}
 		
+	}
+}
+
+void SimpleThreadPooler::wait_till_done()
+{
+	while (true) {
+		at_lock.lock();
+		bool is_empty = rti == rtj;
+		at_lock.unlock();
+		if (is_empty) {
+			return;
+		}
 	}
 }

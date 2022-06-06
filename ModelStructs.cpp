@@ -53,6 +53,11 @@ LRS BoneAnimData::transformAfterGap(int gap_ms)
 				curr_time = 0;
 				break;
 			}
+			if (curr_step == 0 && !loop_anim) {
+				animLRS.anim_finished = true;
+				curr_time = 0;
+				break;
+			}
 			curr_time += step_time;
 			gap_ms -= step_time;
 		}

@@ -9,6 +9,7 @@
 class SimpleThreadPooler {
 public:
 	SimpleThreadPooler(uint32_t max_threads);
+	~SimpleThreadPooler();
 
 	template<typename F, typename ... Fargs>
 	void add_task(F&& f, Fargs&& ...args) {
@@ -21,6 +22,7 @@ public:
 	void do_work();
 	void run();
 	void stop();
+	void wait_till_done();
 private:
 	uint32_t MAX_TASKS = 1000;
 	uint32_t thread_limit;

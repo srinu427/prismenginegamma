@@ -29,8 +29,6 @@ void LogicManager::parseCollDataFile(std::string cfname)
         std::istringstream lss(line);
 
         char itype[5];
-        float plane_thickness;
-        float plane_friction;
 
         lss.read(itype, 4);
         itype[4] = '\0';
@@ -38,8 +36,10 @@ void LogicManager::parseCollDataFile(std::string cfname)
         if (itype[0] != '#') {
             try {
                 lss.seekg(4);
-                lss >> plane_thickness >> plane_friction;
                 if (strcmp(itype, "PUVL") == 0) {
+                    float plane_thickness;
+                    float plane_friction;
+                    lss >> plane_thickness >> plane_friction;
                     glm::vec3 u, v, rcenter;
                     float ulen, vlen;
                     lss >> rcenter.x >> rcenter.y >> rcenter.z >> u.x >> u.y >> u.z >> v.x >> v.y >> v.z >> ulen >> vlen;
@@ -48,6 +48,9 @@ void LogicManager::parseCollDataFile(std::string cfname)
                     continue;
                 }
                 if (strcmp(itype, "PNSP") == 0) {
+                    float plane_thickness;
+                    float plane_friction;
+                    lss >> plane_thickness >> plane_friction;
                     int n;
                     lss >> n;
                     std::vector<glm::vec3> points(n);
@@ -59,6 +62,9 @@ void LogicManager::parseCollDataFile(std::string cfname)
                     continue;
                 }
                 if (strcmp(itype, "CUVH") == 0) {
+                    float plane_thickness;
+                    float plane_friction;
+                    lss >> plane_thickness >> plane_friction;
                     glm::vec3 u, v, rcenter;
                     float ulen, vlen, tlen;
                     lss >> rcenter.x >> rcenter.y >> rcenter.z >> u.x >> u.y >> u.z >> v.x >> v.y >> v.z >> ulen >> vlen >> tlen;
@@ -67,6 +73,9 @@ void LogicManager::parseCollDataFile(std::string cfname)
                     continue;
                 }
                 if (strcmp(itype, "CNPH") == 0) {
+                    float plane_thickness;
+                    float plane_friction;
+                    lss >> plane_thickness >> plane_friction;
                     int n;
                     float h;
                     lss >> n;
@@ -80,11 +89,10 @@ void LogicManager::parseCollDataFile(std::string cfname)
                     continue;
                 }
                 if (strcmp(itype, "LANI") == 0) {
-                    lss.seekg(4);
                     int n;
                     lss >> n;
+
                     BoneAnimData tmp_bad;
-                    tmp_bad.name = "fanim";
                     tmp_bad.total_time = 0;
                     for (int i = 0; i < n; i++) {
                         int step_dur;
@@ -102,19 +110,70 @@ void LogicManager::parseCollDataFile(std::string cfname)
                         tmp_bad.steps.push_back(tmp_bas);
                         tmp_bad.total_time += step_dur;
                     }
+
+                    bool loop_state;
+                    std::string loop_str, animname;
+                    lss >> loop_str >> animname;
+                    loop_state = (loop_str == "LOOP");
+
+                    tmp_bad.loop_anim = loop_state;
+                    tmp_bad.name = animname;
+
                     PolyCollMesh* lastmesh = physicsmgr->lmeshes->back();
-                    lastmesh->anims["fanim"] = tmp_bad;
-                    lastmesh->running_anims.push_back("fanim");
+                    lastmesh->anims[animname] = tmp_bad;
+                    if (loop_state) {
+                        lastmesh->running_anims.push_back(animname);
+                    }
 
                     lastmesh = physicsmgr->lmeshes_future->back();
-                    lastmesh->anims["fanim"] = tmp_bad;
-                    lastmesh->running_anims.push_back("fanim");
+                    lastmesh->anims[animname] = tmp_bad;
+                    if (loop_state) {
+                        lastmesh->running_anims.push_back(animname);
+                    }
                     continue;
                 }
+
                 if (strcmp(itype, "HIDE") == 0) {
                     sb_visible_flags[physicsmgr->lmeshes->size() - 1] = false;
                     continue;
                 }
+
+                if (strcmp(itype, "KILL") == 0) {
+                    physicsmgr->lmeshes->at(physicsmgr->lmeshes->size() - 1)->coll_behav = "kill";
+                    physicsmgr->lmeshes_future->at(physicsmgr->lmeshes_future->size() - 1)->coll_behav = "kill";
+                    continue;
+                }
+
+                if (strcmp(itype, "RAOT") == 0) {
+                    std::string animname;
+                    lss >> animname;
+                    physicsmgr->lmeshes->at(physicsmgr->lmeshes->size() - 1)->coll_behav = "animself";
+                    physicsmgr->lmeshes->at(physicsmgr->lmeshes->size() - 1)->coll_behav_args.push_back(animname);
+                    physicsmgr->lmeshes->at(physicsmgr->lmeshes->size() - 1)->running_anims.clear();
+
+                    physicsmgr->lmeshes_future->at(physicsmgr->lmeshes_future->size() - 1)->coll_behav = "animself";
+                    physicsmgr->lmeshes_future->at(physicsmgr->lmeshes_future->size() - 1)->coll_behav_args.push_back(animname);
+                    physicsmgr->lmeshes_future->at(physicsmgr->lmeshes_future->size() - 1)->running_anims.clear();
+                    continue;
+                }
+
+                if (strcmp(itype, "RRAT") == 0) {
+                    int n;
+                    std::string animname;
+                    lss >> n >> animname;
+                    physicsmgr->lmeshes->at(physicsmgr->lmeshes->size() - 1)->coll_behav = "animremote";
+                    physicsmgr->lmeshes->at(physicsmgr->lmeshes->size() - 1)->coll_behav_args.push_back(animname);
+                    physicsmgr->lmeshes->at(physicsmgr->lmeshes->size() - 1)->coll_behav_args.push_back(std::to_string(n));
+                    physicsmgr->lmeshes->at(physicsmgr->lmeshes->size() - 1)->running_anims.clear();
+
+                    physicsmgr->lmeshes_future->at(physicsmgr->lmeshes_future->size() - 1)->coll_behav = "animremote";
+                    physicsmgr->lmeshes_future->at(physicsmgr->lmeshes_future->size() - 1)->coll_behav_args.push_back(animname);
+                    physicsmgr->lmeshes_future->at(physicsmgr->lmeshes_future->size() - 1)->coll_behav_args.push_back(std::to_string(n));
+                    physicsmgr->lmeshes_future->at(physicsmgr->lmeshes_future->size() - 1)->running_anims.clear();
+                    continue;
+                }
+
+
                 if (strcmp(itype, "MDLO") == 0) {
                     lss.seekg(4);
                     std::string objPath, texPath, nmapPath;
@@ -274,7 +333,7 @@ void LogicManager::init()
     audiomgr->add_aud_source("1");
     audiomgr->update_listener(player->_center, player->_vel, currentCamDir, currentCamUp);
 
-    thread_pool = new SimpleThreadPooler(2);
+    //thread_pool = new SimpleThreadPooler(2);
 }
 
 void LogicManager::run()
@@ -380,8 +439,6 @@ void LogicManager::computeLogic(std::chrono::system_clock::time_point curr_time,
     }
 
     bool ground_touch = false;
-    int ground_plane = -1;
-    glm::vec3 ground_normal = glm::vec3(0);
     for (int pli = 0; pli < physicsmgr->dl_ccache[0].size(); pli++) {
         CollCache tmp_cc = physicsmgr->dl_ccache[0][pli];
         if ((!tmp_cc.m1side && !tmp_cc.m2side) && abs(glm::dot(glm::normalize(glm::vec3(tmp_cc.sep_plane)), glm::vec3(0, 1, 0))) > 0.1) {
@@ -399,12 +456,6 @@ void LogicManager::computeLogic(std::chrono::system_clock::time_point curr_time,
     if (inputmgr->wasKeyPressed(GLFW_KEY_S)) inp_vel += crelz;
     if (inputmgr->wasKeyPressed(GLFW_KEY_A)) inp_vel -= crelx;
     if (inputmgr->wasKeyPressed(GLFW_KEY_D)) inp_vel += crelx;
-    if (ground_touch) {
-        have_double_jump = true;
-        if (in_air) {
-            audiomgr->play_aud_buffer_from_source("player", "fall");
-        }
-    }
 
     bool do_jump = false;
 
@@ -424,6 +475,29 @@ void LogicManager::computeLogic(std::chrono::system_clock::time_point curr_time,
             }
         }
     }
+    if (!do_jump) {
+        if (last_f_in_ground) {
+            if (!ground_touch) {
+                ground_touch = true;
+                last_f_in_ground = false;
+            }
+        }
+        else {
+            if (ground_touch) {
+                last_f_in_ground = true;
+            }
+        }
+    }
+    else {
+        last_f_in_ground = false;
+    }
+
+    if (ground_touch) {
+        have_double_jump = true;
+        if (in_air) {
+            audiomgr->play_aud_buffer_from_source("player", "fall");
+        }
+    }
 
     in_air = !ground_touch;
 
@@ -431,7 +505,7 @@ void LogicManager::computeLogic(std::chrono::system_clock::time_point curr_time,
         player->controlled = true;
         player_future->controlled = true;
         if (ground_touch) {
-            player->_vel = 20.0f * glm::normalize(normalize_vec_in_dir(glm::vec3(inp_vel.x, 0, inp_vel.z), ground_normal, 0)) + glm::dot((*(physicsmgr->lmeshes))[ground_plane]->_vel, ground_normal) * ground_normal;
+            player->_vel = 22.0f * glm::normalize(normalize_vec_in_dir(glm::vec3(inp_vel.x, 0, inp_vel.z), ground_normal, 0)) + glm::dot((*(physicsmgr->lmeshes))[ground_plane]->_vel, ground_normal) * ground_normal;
             if (do_jump) {
                 player->_vel.y = (*(physicsmgr->lmeshes))[ground_plane]->_vel.y + 50;
                 player->_acc.x = 0;
@@ -447,7 +521,7 @@ void LogicManager::computeLogic(std::chrono::system_clock::time_point curr_time,
         else {
             if (!do_jump) {
                 if (glm::dot(player->_vel, glm::normalize(inp_vel)) < 15.0f) {
-                    player->_acc = glm::vec3(0, gravity, 0) + 40.0f * glm::normalize(glm::vec3(inp_vel.x, 0, inp_vel.z));
+                    player->_acc = glm::vec3(0, gravity, 0) + 20.0f * glm::normalize(glm::vec3(inp_vel.x, 0, inp_vel.z));
                     glm::vec3 tmp = glm::normalize(glm::vec3(player->_vel.x, 0, player->_vel.z));
                     if (glm::length(tmp) > 15.0f) {
                         tmp = glm::normalize(tmp);
@@ -456,8 +530,7 @@ void LogicManager::computeLogic(std::chrono::system_clock::time_point curr_time,
                 }
             }
             else {
-                std::cout << "djump";
-                player->_vel = 20.0f * glm::normalize(glm::vec3(inp_vel.x, 0, inp_vel.z)) + glm::vec3(0, 50, 0);
+                player->_vel = 15.0f * glm::normalize(glm::vec3(inp_vel.x, 0, inp_vel.z)) + glm::vec3(0, 50, 0);
                 player->_acc.x = 0;
                 player->_acc.z = 0;
                 player->_acc.y = gravity;
@@ -481,18 +554,17 @@ void LogicManager::computeLogic(std::chrono::system_clock::time_point curr_time,
     physicsmgr->run_physics(int(logicDeltaT * 1000));
     //physicsmgr->run_physics(5);
 
-    /*
-    for (auto it : mobjects) {
+    for (auto it = mobjects.begin(); it != mobjects.end(); it++) {
         std::smatch m;
-        if (std::regex_search(it.first, m, sbreg)) {
+        if (std::regex_search(it->first, m, sbreg)) {
             int sbi = std::stoi(m[1].str());
-            mobjects[it.second.id].objLRS.location = it.second.initLRS.location + ((*(physicsmgr->lmeshes))[sbi]->_center - (*(physicsmgr->lmeshes))[sbi]->_init_center);
+            mobjects[it->second.id].objLRS.location = it->second.initLRS.location + ((*(physicsmgr->lmeshes))[sbi]->_center - (*(physicsmgr->lmeshes))[sbi]->_init_center);
         }
     }
-    */
 
     if (inputmgr->wasKeyPressed(GLFW_MOUSE_BUTTON_1)) {
-        print_vec(player->_center);
+        print_vec(player->_center - (*(physicsmgr->lmeshes))[ground_plane]->_center);
+        std::cout << int(logicDeltaT * 1000) << ',' << ground_touch << ',' << last_f_in_ground << ',' << in_air << '\n';
     }
     currentCamEye = player->_center + glm::vec3(0, 2.5, 0);
     currentCamDir = glm::vec3(glm::rotate(glm::mat4(1.0f),
