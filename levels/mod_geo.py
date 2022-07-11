@@ -9,7 +9,7 @@ def anim_data_to_str(adata):
         aout = []
         aout += ["LANI"]
         aout += [str(len(sadata["steps"]))]
-        for astep in asteps:
+        for astep in sadata["steps"]:
             aout += [vec_to_str(sadata["steps"]["duration"])]
             aout += [vec_to_str(sadata["steps"]["init_loc"])]
             aout += [vec_to_str(sadata["steps"]["final_loc"])]

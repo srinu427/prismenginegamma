@@ -142,11 +142,11 @@ VkInstance vkutils::createVKInstance(
 	VkInstanceCreateInfo createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 	createInfo.pApplicationInfo = &appInfo;
-	createInfo.enabledExtensionCount = extensions.size();
+	createInfo.enabledExtensionCount = uint32_t(extensions.size());
 	createInfo.ppEnabledExtensionNames = extensions.data();
 
 	if (enableValidationLayers) {
-		createInfo.enabledLayerCount = validationLayers.size();
+		createInfo.enabledLayerCount = uint32_t(validationLayers.size());
 		createInfo.ppEnabledLayerNames = validationLayers.data();
 		VkDebugUtilsMessengerCreateInfoEXT dmcreateinfo = populateDebugMessengerCreateInfo();
 		createInfo.pNext = &dmcreateinfo;
@@ -493,6 +493,7 @@ GPUImage vkutils::createGPUImage(VkDevice device, VkPhysicalDevice physicalDevic
 
 	GPUImage res = createGPUImage(device, tImg, imageViewInfo);
 	res._imageMemory = tImgMem;
+	return res;
 }
 
 GPUImage vkutils::createGPUImage(VkDevice device, VkPhysicalDevice physicalDevice, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, uint32_t layerCount, VkImageCreateFlags imageFlag, VkImageUsageFlags usageFlag, VkMemoryPropertyFlags memFlag, VkImageViewCreateInfo imageViewInfo)
@@ -535,6 +536,7 @@ GPUImage vkutils::createGPUImage(VkDevice device, VkPhysicalDevice physicalDevic
 
 	GPUImage res = createGPUImage(device, tImg, imageViewInfo);
 	res._imageMemory = tImgMem;
+	return res;
 }
 
 void vkutils::destroyGPUImage(VkDevice device, GPUImage image, bool memory_already_freed)
@@ -695,7 +697,7 @@ VkFramebuffer vkutils::createFrameBuffer(VkDevice device, VkRenderPass renderPas
 	VkFramebufferCreateInfo framebufferInfo{};
 	framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 	framebufferInfo.renderPass = renderPass;
-	framebufferInfo.attachmentCount = attachments.size();
+	framebufferInfo.attachmentCount = uint32_t(attachments.size());
 	framebufferInfo.pAttachments = attachment_iviews.data();
 	framebufferInfo.width = width;
 	framebufferInfo.height = height;
@@ -715,7 +717,7 @@ void vkutils::beginRenderPass(VkRenderPass rPass, VkFramebuffer fBuffer, VkExten
 	renderPassInfo.framebuffer = fBuffer;
 	renderPassInfo.renderArea.offset = { 0, 0 };
 	renderPassInfo.renderArea.extent = rpExtent;
-	renderPassInfo.clearValueCount = clearValues.size();
+	renderPassInfo.clearValueCount = uint32_t(clearValues.size());
 	renderPassInfo.pClearValues = clearValues.data();
 
 	vkCmdBeginRenderPass(cmdBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
@@ -893,7 +895,7 @@ VkDescriptorSet vkutils::createImageDSet(VkDevice device, VkDescriptorPool dPool
 	dSetWrite.dstBinding = 0;
 	dSetWrite.dstArrayElement = 0;
 	dSetWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	dSetWrite.descriptorCount = imageInfos.size();
+	dSetWrite.descriptorCount = uint32_t(imageInfos.size());
 	dSetWrite.pImageInfo = imageInfos.data();
 
 	vkUpdateDescriptorSets(device, 1, &dSetWrite, 0, NULL);

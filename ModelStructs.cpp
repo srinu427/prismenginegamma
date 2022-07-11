@@ -83,7 +83,7 @@ LRS BoneAnimData::transformAfterGap(int gap_ms)
 
 void ModelData::pushToRenderer(PrismRenderer* renderer)
 {
-	renderer->addRenderObj(id, modelFilePath, texFilePath, nmapFilePath, "linear", objLRS.getTMatrix());
+	renderer->addRenderObj(id, modelFilePath, texFilePath, nmapFilePath, semapFilePath, "linear", objLRS.getTMatrix());
 }
 
 void ModelData::updateAnim(std::string animName, int gap_ms)

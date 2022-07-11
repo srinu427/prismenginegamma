@@ -44,6 +44,7 @@ struct Vertex {
 	glm::vec3 pos;
 	glm::vec3 normal;
 	glm::vec3 tangent;
+	glm::vec3 bitangent;
 	glm::vec3 color;
 	glm::vec2 texCoord;
 
@@ -56,8 +57,8 @@ struct Vertex {
 		return bindingDescription;
 	}
 
-	static std::array<VkVertexInputAttributeDescription, 5> getAttributeDescriptions() {
-		std::array<VkVertexInputAttributeDescription, 5> attributeDescriptions{};
+	static std::array<VkVertexInputAttributeDescription, 6> getAttributeDescriptions() {
+		std::array<VkVertexInputAttributeDescription, 6> attributeDescriptions{};
 		attributeDescriptions[0].binding = 0;
 		attributeDescriptions[0].location = 0;
 		attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
@@ -76,12 +77,17 @@ struct Vertex {
 		attributeDescriptions[3].binding = 0;
 		attributeDescriptions[3].location = 3;
 		attributeDescriptions[3].format = VK_FORMAT_R32G32B32_SFLOAT;
-		attributeDescriptions[3].offset = offsetof(Vertex, color);
+		attributeDescriptions[3].offset = offsetof(Vertex, bitangent);
 
 		attributeDescriptions[4].binding = 0;
 		attributeDescriptions[4].location = 4;
-		attributeDescriptions[4].format = VK_FORMAT_R32G32_SFLOAT;
-		attributeDescriptions[4].offset = offsetof(Vertex, texCoord);
+		attributeDescriptions[4].format = VK_FORMAT_R32G32B32_SFLOAT;
+		attributeDescriptions[4].offset = offsetof(Vertex, color);
+
+		attributeDescriptions[5].binding = 0;
+		attributeDescriptions[5].location = 5;
+		attributeDescriptions[5].format = VK_FORMAT_R32G32_SFLOAT;
+		attributeDescriptions[5].offset = offsetof(Vertex, texCoord);
 
 		return attributeDescriptions;
 	}
@@ -139,6 +145,19 @@ struct Mesh {
 	VkSampler _textureSampler;
 
 	void add_vertices(std::vector<Vertex> verts);
+	void make_cuboid(glm::vec3 center, glm::vec3 u, glm::vec3 v, float ulen, float vlen, float tlen);
+	bool load_from_obj(const char* filename);
+};
+
+struct MaintainedMesh {
+	std::vector<Vertex> _vertices;
+	std::vector<uint32_t> _indices;
+
+	GPUBuffer _vertexBuffer[3];
+	GPUBuffer _indexBuffer[3];
+	VkSampler _textureSampler;
+
+	void add_vertices(std::vector<Vertex> verts);
 	bool load_from_obj(const char* filename);
 };
 
@@ -149,14 +168,15 @@ struct GPUImage {
 	VkImageView _imageView;
 };
 
-struct GPUTexture2d {
-	GPUImage _gImage;
+struct GPUTextureSet {
+	std::vector<GPUImage> _gImages;
 	VkDescriptorSet _dSet;
 };
 
 struct GPUCameraData {
 	glm::vec4 camPos;
 	glm::vec4 camDir;
+	glm::vec4 projprops;
 	glm::mat4 viewproj;
 };
 
@@ -177,6 +197,7 @@ struct GPULight{
 	glm::vec4 pos = glm::vec4(0);
 	glm::vec4 color = glm::vec4(0);
 	glm::vec4 dir = glm::vec4(0);
+	glm::vec4 props = glm::vec4(0);
 	glm::mat4 proj = glm::mat4(1);
 	glm::mat4 viewproj = glm::mat4(1);
 	glm::ivec4 flags = glm::ivec4(0);
@@ -193,34 +214,46 @@ class RenderObject {
 public:
 	std::string id;
 	Mesh* mesh;
-	GPUTexture2d* texture;
-	GPUTexture2d* nmap;
+	MaintainedMesh* mmesh;
+	GPUTextureSet* texmaps;
 	GPUObjectData uboData;
 	bool renderable = true;
 	bool shadowcasting = true;
+	bool maintained_mesh = false;
 
-	void drawMesh(VkCommandBuffer cmdBuffer, uint32_t obj_idx = 0);
+	void drawMesh(VkCommandBuffer cmdBuffer, size_t obj_idx = 0);
 };
 
 struct GPUFrameData {
 	std::unordered_map<std::string, GPUSetBuffer> setBuffers;
 
+	VkCommandPool commandPool;
+	VkCommandBuffer commandBuffer;
+
+	GPUImage swapChainImage;
+	GPUImage colorImage;
+	GPUImage positionImage;
+	GPUImage normalImage;
+	GPUImage seImage;
+	GPUImage ambientImage;
 	GPUImage pShadowMapTemp;
 	GPUImage dShadowMapTemp;
 	GPUImage pShadowDepthImage;
 	GPUImage dShadowDepthImage;
+	std::vector<GPUImage> shadow_cube_maps;
+	std::vector<GPUImage> shadow_dir_maps;
+
+	VkFramebuffer swapChainFrameBuffer;
+	VkFramebuffer gbufferFrameBuffer;
+	VkFramebuffer ambientFrameBuffer;
 	VkFramebuffer pShadowFrameBuffer;
 	VkFramebuffer dShadowFrameBuffer;
-
-	VkCommandPool commandPool;
-	VkCommandBuffer commandBuffer;
-	std::vector<GPUImage> shadow_cube_maps;
+	
 	VkDescriptorSet shadow_cube_dset;
-	std::vector<GPUImage> shadow_dir_maps;
 	VkDescriptorSet shadow_dir_dset;
-
-	GPUImage swapChainImage;
-	VkFramebuffer swapChainFrameBuffer;
+	VkDescriptorSet positionDset;
+	VkDescriptorSet normalImageDset;
+	VkDescriptorSet finalComposeDset;
 
 	VkSemaphore presentSemaphore, renderSemaphore;
 	VkFence renderFence;

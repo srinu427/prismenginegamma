@@ -105,11 +105,11 @@ void PrismPhysics::gen_and_add_pcmesh(glm::vec3 ccenter, glm::vec3 uax, glm::vec
 	pm1->faces[1].vinds_size = top_face_points.size();
 	pm1->faces[1].vinds.resize(pm1->faces[1].vinds_size);
 
-	for (int i = 0; i < (pm1->verts_size >> 1); i++) {
+	for (size_t i = 0; i < (pm1->verts_size >> 1); i++) {
 		pm1->verts[pm1->verts_size - i - 1] = pm1->verts[i] + cno;
 
-		int a = (i + 1) % (pm1->verts_size >> 1);
-		int b = pm1->verts_size - 1 - ((i + 1) % (pm1->verts_size >> 1));
+		size_t a = (i + 1) % (pm1->verts_size >> 1);
+		size_t b = pm1->verts_size - 1 - ((i + 1) % (pm1->verts_size >> 1));
 
 		pm1->faces[0].vinds[i] = i;
 		pm1->faces[1].vinds[i] = (pm1->verts_size >> 1) + i;
@@ -127,7 +127,7 @@ void PrismPhysics::gen_and_add_pcmesh(glm::vec3 ccenter, glm::vec3 uax, glm::vec
 		pm1->edges[3 * i + 2] = glm::ivec2(i, pm1->verts_size - i - 1);
 	}
 
-	for (int i = 0; i < pm1->faces_size; i++) {
+	for (size_t i = 0; i < pm1->faces_size; i++) {
 		pm1->faces[i].process_plane(&pm1->verts);
 	}
 
@@ -258,11 +258,11 @@ void PrismPhysics::gen_and_add_pcmesh(std::vector<glm::vec3> top_face_points, gl
 	pm1->faces[1].vinds_size = top_face_points.size();
 	pm1->faces[1].vinds.resize(pm1->faces[1].vinds_size);
 
-	for (int i = 0; i < (pm1->verts_size >> 1); i++) {
+	for (size_t i = 0; i < (pm1->verts_size >> 1); i++) {
 		pm1->verts[pm1->verts_size - i - 1] = pm1->verts[i] + cno;
 
-		int a = (i + 1) % (pm1->verts_size >> 1);
-		int b = pm1->verts_size - 1 - ((i + 1) % (pm1->verts_size >> 1));
+		size_t a = (i + 1) % (pm1->verts_size >> 1);
+		size_t b = pm1->verts_size - 1 - ((i + 1) % (pm1->verts_size >> 1));
 
 		pm1->faces[0].vinds[i] = i;
 		pm1->faces[1].vinds[i] = (pm1->verts_size >> 1) + i;
@@ -422,11 +422,11 @@ CollCache PrismPhysics::get_sep_plane(PolyCollMesh* pm1, PolyCollMesh* pm2)
 		}
 	}
 
-	int min_p_count = pm2->verts_size;
-	int min_p_idx = 0;
-	for (int i = 0; i < pm1->faces_size; i++) {
-		int in_p = 0;
-		for (int j = 0; j < pm2->verts_size; j++) {
+	size_t min_p_count = pm2->verts_size;
+	size_t min_p_idx = 0;
+	for (size_t i = 0; i < pm1->faces_size; i++) {
+		size_t in_p = 0;
+		for (size_t j = 0; j < pm2->verts_size; j++) {
 			float dist = glm::dot(pm1->faces[i].equation, glm::vec4(pm2->verts[j], 1));
 			if (dist <= pm1->face_epsilon) {
 				in_p++;
@@ -679,7 +679,7 @@ glm::vec3 apply_dbounds_acc(glm::vec3 vec_to_bound, std::vector<DynBound> dbound
 void PrismPhysics::run_physics_one_step()
 {
 	new_mesh_lock.lock();
-	for (int i = 0; i < lmeshes->size(); i++) {
+	for (size_t i = 0; i < lmeshes->size(); i++) {
 		thread_pool->add_task(&advance_mesh_one_step, lmeshes_future->at(i));
 	}
 
@@ -688,7 +688,7 @@ void PrismPhysics::run_physics_one_step()
 	
 	thread_pool->wait_till_done();
 
-	for (int i = 0; i < dmeshes->size(); i++) {
+	for (size_t i = 0; i < dmeshes->size(); i++) {
 		(*dmeshes_future)[i]->_bvel = (*dmeshes_future)[i]->_vel;
 		(*dmeshes_future)[i]->_bacc = (*dmeshes_future)[i]->_acc;
 		advance_mesh_one_step((*dmeshes_future)[i]);
@@ -813,7 +813,7 @@ void PrismPhysics::run_physics_one_step()
 				std::vector<glm::vec3> friction_list;
 				std::vector<glm::vec3> friction_end_list;
 				glm::vec3 min_frict_dvel = glm::vec3(0);
-				for (int j = 0; j < dbounds[i].size(); j++) {
+				for (size_t j = 0; j < dbounds[i].size(); j++) {
 					if (glm::dot(dbounds[i][j]._dir, (*dmeshes_future)[i]->_acc - dbounds[i][j]._acc) < 0.0 &&
 						glm::dot(dbounds[i][j]._dir, (*dmeshes_future)[i]->_bvel - dbounds[i][j]._vel) <= 0.0) {
 						glm::vec3 rvel = ((*dmeshes_future)[i]->_bvel - dbounds[i][j]._vel);
@@ -857,7 +857,7 @@ void PrismPhysics::run_physics_one_step()
 				//advance_mesh_one_step((*dmeshes_future)[i]);
 				(*dmeshes_future)[i]->_vel = (*dmeshes_future)[i]->_bvel;
 
-				for (int k = 0; k < friction_end_list.size(); k++) {
+				for (size_t k = 0; k < friction_end_list.size(); k++) {
 					(*dmeshes_future)[i]->_vel = normalize_vec_in_dir((*dmeshes_future)[i]->_vel, friction_end_list[k], 0);
 				}
 			}
@@ -878,4 +878,20 @@ void PrismPhysics::run_physics_one_step()
 	}
 
 	new_mesh_lock.unlock();
+}
+
+CollPoint PrismPhysics::find_ray_first_coll(glm::vec3 raystart, glm::vec3 raydir)
+{
+	CollPoint cpt;
+	cpt.time = 100000;
+	cpt.time = 100000;
+	for (int i = 0; i < lmeshes->size(); i++) {
+		CollPoint tmp = lmeshes->at(i)->find_ray_first_coll(raystart, raydir);
+		if (tmp.will_collide && tmp.time < cpt.time) {
+			cpt.will_collide = true;
+			cpt.displacement1 = tmp.displacement1;
+			cpt.time = tmp.time;
+		}
+	}
+	return cpt;
 }

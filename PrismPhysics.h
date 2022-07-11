@@ -34,6 +34,7 @@ public:
 	CollCache get_sep_plane(PolyCollMesh* pm1, PolyCollMesh* pm2);
 	void validate_spl_dl(int did, int lid, bool* res);
 	void run_physics(int rt_ms);
+	CollPoint find_ray_first_coll(glm::vec3 raystart, glm::vec3 raydir);
 
 private:
 	static void advance_mesh_one_step(PolyCollMesh* pm);

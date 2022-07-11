@@ -29,31 +29,18 @@
 #define SCUBE_SOFT_BLUR_FALLOFF 0.8
 #define SCUBE_SOFT_BLUR_SAMPLES 45
 
-#define SCUBE_ANTIBLUR_EPSILON 0.001
+#define SCUBE_ANTIBLUR_EPSILON 0.01
 #define PI 3.1415926538
 
 #define SHADOW_DARKNESS 0
 #define SHADOW_BRIGHTNESS 1
 #define SHADOW_MIN_BRIGHTNESS 0.1
 
-#define AMBIENT 0.01
+#define AMBIENT 0.03
 
-layout(location = 0) in vec3 fragPosition;
-layout(location = 1) in vec3 fragColor;
-layout(location = 2) in vec3 fragNormal;
-layout(location = 3) in vec3 fragTangent;
-layout(location = 4) in vec3 fragBitangent;
-layout(location = 5) in vec2 fragTexCoord;
+layout(location = 0) in vec2 inUV;
 
-
-layout(set = 2, binding = 0) uniform GPUSceneData {
-	vec4 fogColor; // w is for exponent
-	vec4 fogDistances; //x for min, y for max, zw unused.
-	vec4 ambientColor;
-	vec4 sunlightPosition;
-	vec4 sunlightDirection; //w for sun power
-	vec4 sunlightColor;
-} sceneData;
+layout(location = 0) out vec4 outColor;
 
 struct GPULight {
 	vec4 pos;
@@ -65,17 +52,25 @@ struct GPULight {
 	ivec4 flags;
 };
 
-layout(set = 3, binding = 0) uniform sampler2D texMaps[3];
-layout(std140, set = 4, binding = 0) uniform LightBuffer {GPULight lights[MAX_NS_LIGHTS + MAX_PLIGHTS + MAX_DLIGHTS];} lightBuffer;
-layout(set = 5, binding = 0) uniform samplerCube shadowCubes[MAX_PLIGHTS];
-layout(set = 6, binding = 0) uniform sampler2D shadowMaps[MAX_DLIGHTS];
 layout(set = 0, binding = 0) uniform GPUCameraData {
 	vec4 camPos;
     vec4 camDir;
+	vec4 projprops;
     mat4 viewproj;
 } camData;
+layout(set = 1, binding = 0) uniform GPUSceneData {
+	vec4 fogColor; // w is for exponent
+	vec4 fogDistances; //x for min, y for max, zw unused.
+	vec4 ambientColor;
+	vec4 sunlightPosition;
+	vec4 sunlightDirection; //w for sun power
+	vec4 sunlightColor;
+} sceneData;
+layout(set = 2, binding = 0) uniform sampler2D texMaps[5];
+layout(std140, set = 3, binding = 0) uniform LightBuffer {GPULight lights[MAX_NS_LIGHTS + MAX_PLIGHTS + MAX_DLIGHTS];} lightBuffer;
+layout(set = 4, binding = 0) uniform samplerCube shadowCubes[MAX_PLIGHTS];
+layout(set = 5, binding = 0) uniform sampler2D shadowMaps[MAX_DLIGHTS];
 
-layout(location = 0) out vec4 outColor;
 
 //Pre Calculated sin and cos values for smap blur
 //float smap_sines[] = {0.0, 0.06540312923014306, 0.13052619222005157, 0.19509032201612825, 0.25881904510252074, 0.3214394653031616, 0.3826834323650898, 0.44228869021900125, 0.49999999999999994, 0.5555702330196022, 0.6087614290087207, 0.6593458151000688, 0.7071067811865476, 0.7518398074789774, 0.7933533402912352, 0.8314696123025451, 0.8660254037844386, 0.8968727415326884, 0.9238795325112867, 0.9469301294951056, 0.9659258262890683, 0.9807852804032304, 0.9914448613738104, 0.9978589232386035};
@@ -145,14 +140,17 @@ float compute_shadow(int lidx, vec3 light_vec){
 	vec3 sample_vec;
 	float brad = SCUBE_BLUR_EPSILON*lvl;
 	float sample_weight = SCUBE_BLUR_FALLOFF/(SCUBE_BLUR_SCALING+1);
-	float theta = PI/SCUBE_BLUR_SAMPLES;
-	for (int i = 0; i < SCUBE_BLUR_SAMPLES; i++){
-		sample_vec = v1*cos(i*theta) + v2*sin(i*theta);
+	for (int i = 0; i < SMAP_BLUR_SAMPLES; i++){
+		sample_vec = v1*smap_cosines[i] + v2*smap_sines[i];
+		sample_vec *= brad;
+		if(texture(shadowCubes[midx], light_vec + sample_vec).r*SCUBE_MUL_EPSILON + SCUBE_ADD_EPSILON >= lvl){light_samples += sample_weight;}
+		if(texture(shadowCubes[midx], light_vec - sample_vec).r*SCUBE_MUL_EPSILON + SCUBE_ADD_EPSILON >= lvl){light_samples += sample_weight;}
+		sample_vec = v1*smap_cosines[i] - v2*smap_sines[i];
 		sample_vec *= brad;
 		if(texture(shadowCubes[midx], light_vec + sample_vec).r*SCUBE_MUL_EPSILON + SCUBE_ADD_EPSILON >= lvl){light_samples += sample_weight;}
 		if(texture(shadowCubes[midx], light_vec - sample_vec).r*SCUBE_MUL_EPSILON + SCUBE_ADD_EPSILON >= lvl){light_samples += sample_weight;}
 	}
-	return SHADOW_DARKNESS + SHADOW_BRIGHTNESS*(light_samples/(1 + 2*SCUBE_BLUR_SAMPLES*sample_weight));
+	return SHADOW_DARKNESS + SHADOW_BRIGHTNESS*(light_samples/(1 + 4*SCUBE_BLUR_SAMPLES*sample_weight));
 }
 
 float compute_map_shadow(int lidx, vec3 light_vec, vec4 ppos, vec4 normal){
@@ -192,27 +190,24 @@ float compute_map_shadow(int lidx, vec3 light_vec, vec4 ppos, vec4 normal){
 }
 
 void main() {
-    vec4 texColor = texture(texMaps[0], fragTexCoord);
-    vec4 normTex = texture(texMaps[1], fragTexCoord);
-	vec4 seTex = texture(texMaps[2], fragTexCoord);
-	
+    vec4 texColor = texture(texMaps[0], inUV);
+    vec4 fragPos = texture(texMaps[1], inUV);
+    vec4 normTex = texture(texMaps[2], inUV);
 	normTex = normTex - vec4(0.5);
 	normTex = 2 * normTex;
 
-	vec4 normVal = vec4(0);
+	vec4 seTex = texture(texMaps[3], inUV);
 
-	normVal.x = (fragTangent.x * normTex.x) + (fragNormal.x * normTex.z) + (fragBitangent.x * normTex.y);
-	normVal.y = (fragTangent.y * normTex.x) + (fragNormal.y * normTex.z) + (fragBitangent.y * normTex.y);
-	normVal.z = (fragTangent.z * normTex.x) + (fragNormal.z * normTex.z) + (fragBitangent.z * normTex.y);
+	vec2 movedUV = inUV;
+	movedUV.y = 1 - movedUV.y;
+	vec4 ambTex = texture(texMaps[4], movedUV);
 
-	normVal = normalize(normVal);
-	
 	vec4 overall_shade = vec4(0,0,0,0);
 	for (int i = 0; i < MAX_NS_LIGHTS + MAX_PLIGHTS + MAX_DLIGHTS; i++){
 		vec4 diffuse = vec4(0);
 		vec4 specular = vec4(0);
 		float shadow = 1;
-		vec3 lightVec = lightBuffer.lights[i].pos.xyz - fragPosition;
+		vec3 lightVec = lightBuffer.lights[i].pos.xyz - fragPos.xyz;
 		vec3 lightVecN = normalize(lightVec);
 
 		bool valid_ls = false;
@@ -223,7 +218,7 @@ void main() {
 				shadow = compute_shadow(i, lightVec);
 			}
 			else if(i >= MAX_NS_LIGHTS + MAX_PLIGHTS){
-				shadow = compute_map_shadow(i, lightVec, vec4(fragPosition, 1.0f), normVal);
+				shadow = compute_map_shadow(i, lightVec, vec4(fragPos.xyz, 1.0f), normTex);
 			}
 		}
 
@@ -231,23 +226,23 @@ void main() {
 
 		if (bool((lightBuffer.lights[i].flags.x >> 1) & 1)){
 			valid_ls = true;
-			float lcomp = max(dot(normVal.xyz,lightVecN), 0);
+			float lcomp = max(dot(normTex.xyz,lightVecN), 0);
 			float ldist = lightBuffer.lights[i].props.y;
 			if (ldist < length(lightVec) ){
 				diffuse = vec4(0);
 			}
 			else{
 				lcomp = lcomp * (1 - (length(lightVec)/ldist));
-				diffuse = 1 * lcomp * lightBuffer.lights[i].color;
+				diffuse = 1 * lcomp * lcomp * lightBuffer.lights[i].color;
 				if (i >= MAX_NS_LIGHTS + MAX_PLIGHTS){
-					vec4 smuv = lightBuffer.lights[i].viewproj * vec4(fragPosition.xyz, 1.0f);
+					vec4 smuv = lightBuffer.lights[i].viewproj * vec4(fragPos.xyz, 1.0f);
 					vec4 smuvn = smuv/smuv.w;
 					if (smuvn.z <-1.0 || smuvn.z > 1.0 || smuvn.w < 0.0 || smuvn.x > 1 || smuvn.x < -1 || smuvn.y > 1 || smuvn.y < -1) diffuse = vec4(0); 
 				}
 			}
 
-			vec3 viewDir = normalize(camData.camPos.xyz - fragPosition);
-			vec3 reflectDir = reflect(-lightVecN, normVal.xyz);  
+			vec3 viewDir = normalize(camData.camPos.xyz - fragPos.xyz);
+			vec3 reflectDir = reflect(-lightVecN, normTex.xyz);  
 			float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32)/pow(length(lightVec), 2);
 			specular = 10 * seTex.x * spec * lightBuffer.lights[i].color;
 		}
@@ -257,5 +252,25 @@ void main() {
 			overall_shade = overall_shade + light_shade;
 		}
 	}
-    outColor = texColor * max((AMBIENT + overall_shade), 10 * seTex.y);
+    
+	
+	float ao = 0;
+	float brad = 0.01f;
+	if (length(camData.camPos.xyz - fragPos.xyz) > 10){
+		brad = 0.1/length(camData.camPos.xyz - fragPos.xyz);
+	}
+	for (int i = 0; i < SMAP_BLUR_SAMPLES; i++){
+		vec2 sample_vec = brad*vec2(smap_cosines[i], smap_sines[i]);
+		ao += texture(texMaps[4], movedUV + sample_vec).r;
+		ao += texture(texMaps[4], movedUV - sample_vec).r;
+		sample_vec = brad*vec2(smap_cosines[i], -smap_sines[i]);
+		ao += texture(texMaps[4], movedUV + sample_vec).r;
+		ao += texture(texMaps[4], movedUV - sample_vec).r;
+	}
+	ao /= float(4*SMAP_BLUR_SAMPLES);
+	ao = (ao*ambTex.r)/2.0;
+	ao = pow(ao, 1);
+    //outColor = texColor * ao * ao;
+	outColor = texColor * max((AMBIENT + overall_shade)*ao, 10 * seTex.y);
+	//outColor = vec4(ambTex.r);
 }

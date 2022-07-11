@@ -9,6 +9,10 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
+static void delegate_gen_final_cmd_bufs(PrismRenderer* renderer, uint32_t frameNo) {
+	renderer->genFinalCmdBuffers(frameNo);
+}
+
 void PrismRenderer::getVkInstance()
 {
 	//Struct with app info
@@ -65,9 +69,9 @@ void PrismRenderer::getVkLogicalDevice()
 	VkDeviceCreateInfo createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 	createInfo.pQueueCreateInfos = queueCreateInfos.data();
-	createInfo.queueCreateInfoCount = queueCreateInfos.size();
+	createInfo.queueCreateInfoCount = uint32_t(queueCreateInfos.size());
 	createInfo.pEnabledFeatures = &deviceFeatures;
-	createInfo.enabledExtensionCount = deviceExtensions.size();
+	createInfo.enabledExtensionCount = uint32_t(deviceExtensions.size());
 	createInfo.ppEnabledExtensionNames = deviceExtensions.data();
 	createInfo.pNext = &deviceFeatures11;
 
@@ -158,10 +162,10 @@ void PrismRenderer::createSwapChain(SwapChainSupportDetails swapChainSupport)
 void PrismRenderer::createDescriptorPool() {
 	std::vector<VkDescriptorPoolSize> poolSizes =
 	{
-		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 200 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2000 },
 		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 200 },
 		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 200 },
-		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 200 }
+		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 20 }
 	};
 
 	VkDescriptorPoolCreateInfo poolInfo{};
@@ -185,10 +189,12 @@ void PrismRenderer::makeBasicDSetLayouts()
 	addDsetLayout("vert_uniform", 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT);
 	addDsetLayout("vert_storage", 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT);
 	addDsetLayout("frag_uniform", 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT);
-	addDsetLayout("frag_sampler", 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT);
+	addDsetLayout("frag_sampler_1", 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT);
+	addDsetLayout("frag_sampler_3", 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3, VK_SHADER_STAGE_FRAGMENT_BIT);
+	addDsetLayout("frag_sampler_5", 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 5, VK_SHADER_STAGE_FRAGMENT_BIT);
 	addDsetLayout("vert_frag_uniform", 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT);
-	addDsetLayout("frag_plight_sampler", 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_POINT_LIGHTS, VK_SHADER_STAGE_FRAGMENT_BIT);
-	addDsetLayout("frag_dlight_sampler", 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_DIRECTIONAL_LIGHTS, VK_SHADER_STAGE_FRAGMENT_BIT);
+	addDsetLayout("frag_plight_sampler", 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, uint32_t(MAX_POINT_LIGHTS), VK_SHADER_STAGE_FRAGMENT_BIT);
+	addDsetLayout("frag_dlight_sampler", 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, uint32_t(MAX_DIRECTIONAL_LIGHTS), VK_SHADER_STAGE_FRAGMENT_BIT);
 }
 
 void PrismRenderer::makeBasicCmdPools()
@@ -230,7 +236,7 @@ void PrismRenderer::createDepthImage()
 
 void PrismRenderer::makeDLightMaps()
 {
-	lights.resize(MAX_DIRECTIONAL_LIGHTS + MAX_POINT_LIGHTS);
+	lights.resize(MAX_NS_LIGHTS + MAX_DIRECTIONAL_LIGHTS + MAX_POINT_LIGHTS);
 	for (uint32_t i = 0; i < frameDatas.size(); i++) {
 		for (uint32_t j = 0; j < MAX_DIRECTIONAL_LIGHTS; j++) {
 			GPUImage gimg = vkutils::createGPUImage(
@@ -454,6 +460,154 @@ void PrismRenderer::createShadowRenderPass() {
 	}
 }
 
+void PrismRenderer::createGbufferRenderPass() {
+	VkAttachmentDescription gbufferAttachments[4];
+	VkAttachmentReference gbufferAttachmentsRef[4] = { {} };
+
+	for (size_t ai = 0; ai < 4; ai++) {
+		gbufferAttachments[ai].flags = 0;
+		gbufferAttachments[ai].samples = VK_SAMPLE_COUNT_1_BIT;
+		gbufferAttachments[ai].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		gbufferAttachments[ai].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+		gbufferAttachments[ai].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		gbufferAttachments[ai].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		//gbufferAttachments[ai].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		gbufferAttachments[ai].finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+		gbufferAttachmentsRef[ai].attachment = ai;
+		gbufferAttachmentsRef[ai].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	}
+	gbufferAttachments[0].format = VK_FORMAT_R8G8B8A8_UNORM;
+	gbufferAttachments[1].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+	gbufferAttachments[2].format = VK_FORMAT_R8G8B8A8_UNORM;
+	gbufferAttachments[3].format = VK_FORMAT_R8G8B8A8_UNORM;
+
+	VkAttachmentDescription depthAttachment{};
+	depthAttachment.format = depthFormat;
+	depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+
+	VkAttachmentReference depthAttachmentRef{};
+	depthAttachmentRef.attachment = 4;
+	depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+	VkSubpassDescription subpass{};
+	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subpass.colorAttachmentCount = 4;
+	subpass.pColorAttachments = gbufferAttachmentsRef;
+	subpass.pDepthStencilAttachment = &depthAttachmentRef;
+
+	VkSubpassDependency subpassDependencies[2] = { {} };
+	subpassDependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+	subpassDependencies[0].dstSubpass = 0;
+	subpassDependencies[0].srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	subpassDependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	subpassDependencies[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	subpassDependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	subpassDependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+	subpassDependencies[1].srcSubpass = 0;
+	subpassDependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+	subpassDependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	subpassDependencies[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	subpassDependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	subpassDependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	subpassDependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+	VkAttachmentDescription attachments[5];
+	attachments[0] = gbufferAttachments[0];
+	attachments[1] = gbufferAttachments[1];
+	attachments[2] = gbufferAttachments[2];
+	attachments[3] = gbufferAttachments[3];
+	attachments[4] = depthAttachment;
+
+	VkRenderPassCreateInfo renderPassInfo{};
+	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	renderPassInfo.attachmentCount = 5;
+	renderPassInfo.pAttachments = attachments;
+	renderPassInfo.subpassCount = 1;
+	renderPassInfo.pSubpasses = &subpass;
+	renderPassInfo.dependencyCount = 2;
+	renderPassInfo.pDependencies = subpassDependencies;
+
+	if (vkCreateRenderPass(device, &renderPassInfo, NULL, &gbufferRenderPass) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create gbuffer render pass!");
+	}
+}
+
+void PrismRenderer::createAmbientRenderPass()
+{
+	VkAttachmentDescription colorAttachment{};
+	colorAttachment.format = VK_FORMAT_R8_UNORM;
+	colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	colorAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	VkAttachmentReference colorAttachmentRef{};
+	colorAttachmentRef.attachment = 0;
+	colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	VkAttachmentDescription depthAttachment{};
+	depthAttachment.format = depthFormat;
+	depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+	VkAttachmentReference depthAttachmentRef{};
+	depthAttachmentRef.attachment = 1;
+	depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+	VkSubpassDescription subpass{};
+	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subpass.colorAttachmentCount = 1;
+	subpass.pColorAttachments = &colorAttachmentRef;
+	subpass.pDepthStencilAttachment = NULL;
+
+	std::array<VkSubpassDependency, 2> dependencies;
+	dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+	dependencies[0].dstSubpass = 0;
+	dependencies[0].srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+	dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependencies[0].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+	dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+	dependencies[1].srcSubpass = 0;
+	dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+	dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependencies[1].dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+	dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	dependencies[1].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+	dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+	std::array<VkAttachmentDescription, 1> attachments = { colorAttachment };
+
+	VkRenderPassCreateInfo renderPassInfo{};
+	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+	renderPassInfo.pAttachments = attachments.data();
+	renderPassInfo.subpassCount = 1;
+	renderPassInfo.pSubpasses = &subpass;
+	renderPassInfo.dependencyCount = uint32_t(dependencies.size());
+	renderPassInfo.pDependencies = dependencies.data();
+
+	if (vkCreateRenderPass(device, &renderPassInfo, NULL, &ambientRenderPass) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create render pass!");
+	}
+}
+
 void PrismRenderer::createFinalRenderPass() {
 	VkAttachmentDescription colorAttachment{};
 	colorAttachment.format = swapChainImageFormat;
@@ -487,7 +641,7 @@ void PrismRenderer::createFinalRenderPass() {
 	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 	subpass.colorAttachmentCount = 1;
 	subpass.pColorAttachments = &colorAttachmentRef;
-	subpass.pDepthStencilAttachment = &depthAttachmentRef;
+	subpass.pDepthStencilAttachment = NULL;
 
 	VkSubpassDependency dependency{};
 	dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
@@ -497,7 +651,7 @@ void PrismRenderer::createFinalRenderPass() {
 	dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
 	dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
-	std::array<VkAttachmentDescription, 2> attachments = { colorAttachment, depthAttachment };
+	std::array<VkAttachmentDescription, 1> attachments = { colorAttachment };
 
 	VkRenderPassCreateInfo renderPassInfo{};
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
@@ -529,7 +683,7 @@ void PrismRenderer::makeBasicDSets()
 		frameDatas[i].setBuffers["light"] = vkutils::createSetBuffer(
 			device,
 			physicalDevice,
-			sizeof(GPULight) * (MAX_DIRECTIONAL_LIGHTS + MAX_POINT_LIGHTS),
+			sizeof(GPULight) * (MAX_NS_LIGHTS + MAX_DIRECTIONAL_LIGHTS + MAX_POINT_LIGHTS),
 			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 			descriptorPool,
@@ -543,7 +697,7 @@ void PrismRenderer::makeBasicDSets()
 			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 			descriptorPool,
-			dSetLayouts["vert_uniform"],
+			dSetLayouts["vert_frag_uniform"],
 			VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
 		);
 		frameDatas[i].setBuffers["object"] = vkutils::createSetBuffer(
@@ -556,10 +710,34 @@ void PrismRenderer::makeBasicDSets()
 			dSetLayouts["vert_storage"],
 			VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
 		);
+		frameDatas[i].positionDset = vkutils::createImageDSet(
+			device,
+			descriptorPool,
+			dSetLayouts["frag_sampler_1"],
+			{frameDatas[i].positionImage},
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			texSamplers["linear"]
+		);
+		frameDatas[i].normalImageDset = vkutils::createImageDSet(
+			device,
+			descriptorPool,
+			dSetLayouts["frag_sampler_1"],
+			{ frameDatas[i].normalImage },
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			texSamplers["linear"]
+		);
+		frameDatas[i].finalComposeDset = vkutils::createImageDSet(
+			device,
+			descriptorPool,
+			dSetLayouts["frag_sampler_5"],
+			{ frameDatas[i].colorImage, frameDatas[i].positionImage, frameDatas[i].normalImage, frameDatas[i].seImage, frameDatas[i].ambientImage },
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			texSamplers["linear"]
+		);
 	}
 }
 
-void PrismRenderer::addSimplePipeline(std::string name, VkRenderPass rPass, std::unordered_map<VkShaderStageFlagBits, std::string> stage_shader_map, std::vector<std::string> reqDSetLayouts, VkOffset2D scissorOffset, VkExtent2D scissorExtent, float VPWidth, float VPHeight, bool invert_VP_Y, std::vector<VkPushConstantRange> pushConstantRanges)
+void PrismRenderer::addSimplePipeline(std::string name, VkRenderPass rPass, std::unordered_map<VkShaderStageFlagBits, std::string> stage_shader_map, std::vector<std::string> reqDSetLayouts, VkOffset2D scissorOffset, VkExtent2D scissorExtent, uint32_t VPWidth, uint32_t VPHeight, bool invert_VP_Y, std::vector<VkPushConstantRange> pushConstantRanges)
 {
 	GPUPipeline gPipeline;
 	std::vector<VkShaderModule> shaders;
@@ -582,7 +760,7 @@ void PrismRenderer::addSimplePipeline(std::string name, VkRenderPass rPass, std:
 	vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 	vertexInputInfo.vertexBindingDescriptionCount = 1;
 	vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
-	vertexInputInfo.vertexAttributeDescriptionCount = attributeDescriptions.size();
+	vertexInputInfo.vertexAttributeDescriptionCount = uint32_t(attributeDescriptions.size());
 	vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
 	VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
@@ -593,17 +771,17 @@ void PrismRenderer::addSimplePipeline(std::string name, VkRenderPass rPass, std:
 	VkViewport viewport{};
 	if (invert_VP_Y) {
 		viewport.x = 0.0f;
-		viewport.y = VPHeight;
-		viewport.width = VPWidth;
-		viewport.height = -VPHeight;
+		viewport.y = float(VPHeight);
+		viewport.width = float(VPWidth);
+		viewport.height = -float(VPHeight);
 		viewport.minDepth = 0.0f;
 		viewport.maxDepth = 1.0f;
 	}
 	else {
 		viewport.x = 0.0f;
 		viewport.y = 0.0f;
-		viewport.width = VPWidth;
-		viewport.height = VPHeight;
+		viewport.width = float(VPWidth);
+		viewport.height = float(VPHeight);
 		viewport.minDepth = 0.0f;
 		viewport.maxDepth = 1.0f;
 	}
@@ -660,16 +838,16 @@ void PrismRenderer::addSimplePipeline(std::string name, VkRenderPass rPass, std:
 		else pipelineSetLayouts.push_back(dSetLayouts[dsl_name]);
 	}
 	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	pipelineLayoutInfo.setLayoutCount = pipelineSetLayouts.size();
+	pipelineLayoutInfo.setLayoutCount = uint32_t(pipelineSetLayouts.size());
 	pipelineLayoutInfo.pSetLayouts = pipelineSetLayouts.data();
-	pipelineLayoutInfo.pushConstantRangeCount = pushConstantRanges.size();
+	pipelineLayoutInfo.pushConstantRangeCount = uint32_t(pushConstantRanges.size());
 	pipelineLayoutInfo.pPushConstantRanges = pushConstantRanges.data();
 	if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, NULL, &gPipeline._pipelineLayout) != VK_SUCCESS)
 		throw std::runtime_error("failed to create pipeline layout!");
 
 	VkGraphicsPipelineCreateInfo pipelineInfo{};
 	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-	pipelineInfo.stageCount = shaderStageInfos.size();
+	pipelineInfo.stageCount = uint32_t(shaderStageInfos.size());
 	pipelineInfo.pStages = shaderStageInfos.data();
 	pipelineInfo.pVertexInputState = &vertexInputInfo;
 	pipelineInfo.pInputAssemblyState = &inputAssembly;
@@ -690,18 +868,6 @@ void PrismRenderer::addSimplePipeline(std::string name, VkRenderPass rPass, std:
 	pipelines[name] = gPipeline;
 
 	for (VkShaderModule smod : shaders) vkDestroyShaderModule(device, smod, NULL);
-}
-
-void PrismRenderer::makeFinalPipeline()
-{
-	addSimplePipeline(
-		"final_mesh",
-		finalRenderPass,
-		{ {VK_SHADER_STAGE_VERTEX_BIT , "shaders/final_mesh.vert.spv"}, {VK_SHADER_STAGE_FRAGMENT_BIT , "shaders/final_mesh.frag.spv"} },
-		{ "vert_uniform", "vert_storage", "frag_uniform", "frag_sampler", "vert_frag_uniform", "frag_plight_sampler", "frag_dlight_sampler", "frag_sampler" },
-		{ 0, 0 }, swapChainExtent,
-		swapChainExtent.width, swapChainExtent.height
-	);
 }
 
 void PrismRenderer::makeDLightShadowPipeline()
@@ -732,18 +898,390 @@ void PrismRenderer::makePLightShadowPipeline()
 	);
 }
 
-void PrismRenderer::createFinalFrameBuffers()
-{
-	for (size_t i = 0; i < frameDatas.size(); i++) {
-		std::vector<GPUImage> attachments = { frameDatas[i].swapChainImage, depthImage };
-		frameDatas[i].swapChainFrameBuffer = vkutils::createFrameBuffer(
-			device,
-			finalRenderPass,
-			attachments,
-			swapChainExtent.width, swapChainExtent.height,
-			1
-		);
+void PrismRenderer::makeGbufferPipeline() {
+	GPUPipeline gPipeline;
+	VkShaderModule shaders[2];
+	VkPipelineShaderStageCreateInfo shaderStageInfos[2] = { {} };
+
+	shaders[0] = vkutils::createShader(device, "shaders/gbuffer.vert.spv");
+	shaders[1] = vkutils::createShader(device, "shaders/gbuffer.frag.spv");
+	
+	shaderStageInfos[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	shaderStageInfos[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+	shaderStageInfos[0].module = shaders[0];
+	shaderStageInfos[0].pName = "main";
+	shaderStageInfos[0].pNext = NULL;
+	shaderStageInfos[0].pSpecializationInfo = NULL;
+	shaderStageInfos[0].flags = 0;
+
+	shaderStageInfos[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	shaderStageInfos[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	shaderStageInfos[1].module = shaders[1];
+	shaderStageInfos[1].pName = "main";
+	shaderStageInfos[1].pNext = NULL;
+	shaderStageInfos[1].pSpecializationInfo = NULL;
+	shaderStageInfos[1].flags = 0;
+
+
+	auto bindingDescription = Vertex::getBindingDescription();
+	auto attributeDescriptions = Vertex::getAttributeDescriptions();
+
+	VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+	vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	vertexInputInfo.vertexBindingDescriptionCount = 1;
+	vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+	vertexInputInfo.vertexAttributeDescriptionCount = uint32_t(attributeDescriptions.size());
+	vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+
+	VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+	inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+	VkViewport viewport{};
+
+	viewport.x = 0.0f;
+	viewport.y = float(swapChainExtent.height);
+	viewport.width = float(swapChainExtent.width);
+	viewport.height = -float(swapChainExtent.height);
+	viewport.minDepth = 0.0f;
+	viewport.maxDepth = 1.0f;
+
+
+	VkRect2D scissor{};
+	scissor.offset = { 0, 0 };
+	scissor.extent = swapChainExtent;
+
+	VkPipelineViewportStateCreateInfo viewportState{};
+	viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportState.viewportCount = 1;
+	viewportState.pViewports = &viewport;
+	viewportState.scissorCount = 1;
+	viewportState.pScissors = &scissor;
+
+	VkPipelineRasterizationStateCreateInfo rasterizer{};
+	rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterizer.depthClampEnable = VK_FALSE;
+	rasterizer.rasterizerDiscardEnable = VK_FALSE;
+	rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+	rasterizer.lineWidth = 1.0f;
+	rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+	rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	rasterizer.depthBiasEnable = VK_FALSE;
+
+	VkPipelineMultisampleStateCreateInfo multisampling{};
+	multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisampling.sampleShadingEnable = VK_FALSE;
+	multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+	VkPipelineColorBlendAttachmentState colorBlendAttachments[4] = { {} };
+	for (size_t cbai = 0; cbai < 4; cbai++) {
+		colorBlendAttachments[cbai].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+		colorBlendAttachments[cbai].blendEnable = VK_FALSE;
 	}
+
+	VkPipelineColorBlendStateCreateInfo colorBlending{};
+	colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	colorBlending.logicOpEnable = VK_FALSE;
+	colorBlending.attachmentCount = 4;
+	colorBlending.pAttachments = colorBlendAttachments;
+	colorBlending.pNext = NULL;
+
+	VkPipelineDepthStencilStateCreateInfo depthStencil{};
+	depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthStencil.depthTestEnable = VK_TRUE;
+	depthStencil.depthWriteEnable = VK_TRUE;
+	depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+	depthStencil.depthBoundsTestEnable = VK_FALSE;
+	depthStencil.stencilTestEnable = VK_FALSE;
+	depthStencil.pNext = NULL;
+
+	
+	std::vector<VkDescriptorSetLayout> pipelineSetLayouts;
+	pipelineSetLayouts.push_back(dSetLayouts["vert_frag_uniform"]);
+	pipelineSetLayouts.push_back(dSetLayouts["vert_storage"]);
+	pipelineSetLayouts.push_back(dSetLayouts["frag_sampler_3"]);
+
+	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pipelineLayoutInfo.setLayoutCount = uint32_t(pipelineSetLayouts.size());
+	pipelineLayoutInfo.pSetLayouts = pipelineSetLayouts.data();
+	pipelineLayoutInfo.pushConstantRangeCount = 0;
+	pipelineLayoutInfo.pNext = NULL;
+	if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, NULL, &gPipeline._pipelineLayout) != VK_SUCCESS)
+		throw std::runtime_error("failed to create pipeline layout!");
+
+	VkGraphicsPipelineCreateInfo pipelineInfo{};
+	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipelineInfo.stageCount = 2;
+	pipelineInfo.pStages = shaderStageInfos;
+	pipelineInfo.pVertexInputState = &vertexInputInfo;
+	pipelineInfo.pInputAssemblyState = &inputAssembly;
+	pipelineInfo.pViewportState = &viewportState;
+	pipelineInfo.pRasterizationState = &rasterizer;
+	pipelineInfo.pMultisampleState = &multisampling;
+	pipelineInfo.pDepthStencilState = &depthStencil;
+	pipelineInfo.pColorBlendState = &colorBlending;
+	pipelineInfo.pDynamicState = NULL; // Optional
+	pipelineInfo.layout = gPipeline._pipelineLayout;
+	pipelineInfo.renderPass = gbufferRenderPass;
+	pipelineInfo.subpass = 0;
+	pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
+	pipelineInfo.basePipelineIndex = -1; // Optional
+	pipelineInfo.pNext = NULL;
+	if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, NULL, &gPipeline._pipeline) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create graphics pipeline!");
+	}
+
+	pipelines["gbuffer"] = gPipeline;
+
+	for (VkShaderModule smod : shaders) vkDestroyShaderModule(device, smod, NULL);
+}
+
+void PrismRenderer::makeAmbientPipeline() {
+	GPUPipeline gPipeline;
+	VkShaderModule shaders[2];
+	VkPipelineShaderStageCreateInfo shaderStageInfos[2] = { {} };
+
+	shaders[0] = vkutils::createShader(device, "shaders/screensize.vert.spv");
+	shaders[1] = vkutils::createShader(device, "shaders/ambient.frag.spv");
+
+	shaderStageInfos[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	shaderStageInfos[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+	shaderStageInfos[0].module = shaders[0];
+	shaderStageInfos[0].pName = "main";
+
+	shaderStageInfos[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	shaderStageInfos[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	shaderStageInfos[1].module = shaders[1];
+	shaderStageInfos[1].pName = "main";
+
+
+	VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+	vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+	VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+	inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+	VkViewport viewport{};
+
+	viewport.x = 0.0f;
+	viewport.y = float(swapChainExtent.height);
+	viewport.width = float(swapChainExtent.width);
+	viewport.height = -float(swapChainExtent.height);
+	viewport.minDepth = 0.0f;
+	viewport.maxDepth = 1.0f;
+
+
+	VkRect2D scissor{};
+	scissor.offset = { 0, 0 };
+	scissor.extent = swapChainExtent;
+
+	VkPipelineViewportStateCreateInfo viewportState{};
+	viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportState.viewportCount = 1;
+	viewportState.pViewports = &viewport;
+	viewportState.scissorCount = 1;
+	viewportState.pScissors = &scissor;
+
+	VkPipelineRasterizationStateCreateInfo rasterizer{};
+	rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterizer.depthClampEnable = VK_FALSE;
+	rasterizer.rasterizerDiscardEnable = VK_FALSE;
+	rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+	rasterizer.lineWidth = 1.0f;
+	rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+	rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	rasterizer.depthBiasEnable = VK_FALSE;
+
+	VkPipelineMultisampleStateCreateInfo multisampling{};
+	multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisampling.sampleShadingEnable = VK_FALSE;
+	multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+	VkPipelineColorBlendAttachmentState colorBlendAttachments[1] = { {} };
+
+	colorBlendAttachments[0].colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	colorBlendAttachments[0].blendEnable = VK_FALSE;
+
+
+	VkPipelineColorBlendStateCreateInfo colorBlending{};
+	colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	colorBlending.logicOpEnable = VK_FALSE;
+	colorBlending.attachmentCount = 1;
+	colorBlending.pAttachments = colorBlendAttachments;
+
+	VkPipelineDepthStencilStateCreateInfo depthStencil{};
+	depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthStencil.depthTestEnable = VK_FALSE;
+	depthStencil.depthWriteEnable = VK_FALSE;
+	depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+	depthStencil.depthBoundsTestEnable = VK_FALSE;
+	depthStencil.stencilTestEnable = VK_FALSE;
+
+	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+	std::vector<VkDescriptorSetLayout> pipelineSetLayouts;
+	pipelineSetLayouts.push_back(dSetLayouts["frag_sampler_1"]);
+	pipelineSetLayouts.push_back(dSetLayouts["frag_sampler_1"]);
+	pipelineSetLayouts.push_back(dSetLayouts["vert_frag_uniform"]);
+
+	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pipelineLayoutInfo.setLayoutCount = uint32_t(pipelineSetLayouts.size());
+	pipelineLayoutInfo.pSetLayouts = pipelineSetLayouts.data();
+	pipelineLayoutInfo.pushConstantRangeCount = 0;
+	if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, NULL, &gPipeline._pipelineLayout) != VK_SUCCESS)
+		throw std::runtime_error("failed to create pipeline layout!");
+
+	VkGraphicsPipelineCreateInfo pipelineInfo{};
+	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipelineInfo.stageCount = 2;
+	pipelineInfo.pStages = shaderStageInfos;
+	pipelineInfo.pVertexInputState = &vertexInputInfo;
+	pipelineInfo.pInputAssemblyState = &inputAssembly;
+	pipelineInfo.pViewportState = &viewportState;
+	pipelineInfo.pRasterizationState = &rasterizer;
+	pipelineInfo.pMultisampleState = &multisampling;
+	pipelineInfo.pDepthStencilState = &depthStencil;
+	pipelineInfo.pColorBlendState = &colorBlending;
+	pipelineInfo.pDynamicState = NULL; // Optional
+	pipelineInfo.layout = gPipeline._pipelineLayout;
+	pipelineInfo.renderPass = ambientRenderPass;
+	pipelineInfo.subpass = 0;
+	pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
+	pipelineInfo.basePipelineIndex = -1; // Optional
+	if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, NULL, &gPipeline._pipeline) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create graphics pipeline!");
+	}
+
+	pipelines["ambient"] = gPipeline;
+
+	for (VkShaderModule smod : shaders) vkDestroyShaderModule(device, smod, NULL);
+}
+
+void PrismRenderer::makeFinalPipeline()
+{
+	GPUPipeline gPipeline;
+	VkShaderModule shaders[2];
+	VkPipelineShaderStageCreateInfo shaderStageInfos[2] = { {} };
+
+	shaders[0] = vkutils::createShader(device, "shaders/screensize.vert.spv");
+	shaders[1] = vkutils::createShader(device, "shaders/finalimage.frag.spv");
+
+	shaderStageInfos[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	shaderStageInfos[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+	shaderStageInfos[0].module = shaders[0];
+	shaderStageInfos[0].pName = "main";
+
+	shaderStageInfos[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	shaderStageInfos[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	shaderStageInfos[1].module = shaders[1];
+	shaderStageInfos[1].pName = "main";
+
+	VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+	vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+	VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+	inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+	VkViewport viewport{};
+
+	viewport.x = 0.0f;
+	viewport.y = 0;
+	viewport.width = float(swapChainExtent.width);
+	viewport.height = float(swapChainExtent.height);
+	viewport.minDepth = 0.0f;
+	viewport.maxDepth = 1.0f;
+
+
+	VkRect2D scissor{};
+	scissor.offset = { 0, 0 };
+	scissor.extent = swapChainExtent;
+
+	VkPipelineViewportStateCreateInfo viewportState{};
+	viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportState.viewportCount = 1;
+	viewportState.pViewports = &viewport;
+	viewportState.scissorCount = 1;
+	viewportState.pScissors = &scissor;
+
+	VkPipelineRasterizationStateCreateInfo rasterizer{};
+	rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterizer.depthClampEnable = VK_FALSE;
+	rasterizer.rasterizerDiscardEnable = VK_FALSE;
+	rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+	rasterizer.lineWidth = 1.0f;
+	rasterizer.cullMode = VK_CULL_MODE_FRONT_BIT;
+	rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	rasterizer.depthBiasEnable = VK_FALSE;
+
+	VkPipelineMultisampleStateCreateInfo multisampling{};
+	multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisampling.sampleShadingEnable = VK_FALSE;
+	multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+	VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+	colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	colorBlendAttachment.blendEnable = VK_FALSE;
+
+	VkPipelineColorBlendStateCreateInfo colorBlending{};
+	colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	colorBlending.logicOpEnable = VK_FALSE;
+	colorBlending.attachmentCount = 1;
+	colorBlending.pAttachments = &colorBlendAttachment;
+
+	VkPipelineDepthStencilStateCreateInfo depthStencil{};
+	depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthStencil.depthTestEnable = VK_FALSE;
+	depthStencil.depthWriteEnable = VK_FALSE;
+	depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+	depthStencil.depthBoundsTestEnable = VK_FALSE;
+	depthStencil.stencilTestEnable = VK_FALSE;
+
+	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+	std::vector<VkDescriptorSetLayout> pipelineSetLayouts;
+	pipelineSetLayouts.push_back(dSetLayouts["vert_frag_uniform"]);
+	pipelineSetLayouts.push_back(dSetLayouts["frag_uniform"]);
+	pipelineSetLayouts.push_back(dSetLayouts["frag_sampler_5"]);
+	pipelineSetLayouts.push_back(dSetLayouts["vert_frag_uniform"]);
+	pipelineSetLayouts.push_back(dSetLayouts["frag_plight_sampler"]);
+	pipelineSetLayouts.push_back(dSetLayouts["frag_dlight_sampler"]);
+
+	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pipelineLayoutInfo.setLayoutCount = uint32_t(pipelineSetLayouts.size());
+	pipelineLayoutInfo.pSetLayouts = pipelineSetLayouts.data();
+	pipelineLayoutInfo.pushConstantRangeCount = 0;
+
+	if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, NULL, &gPipeline._pipelineLayout) != VK_SUCCESS)
+		throw std::runtime_error("failed to create pipeline layout!");
+
+	VkGraphicsPipelineCreateInfo pipelineInfo{};
+	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipelineInfo.stageCount = 2;
+	pipelineInfo.pStages = shaderStageInfos;
+	pipelineInfo.pVertexInputState = &vertexInputInfo;
+	pipelineInfo.pInputAssemblyState = &inputAssembly;
+	pipelineInfo.pViewportState = &viewportState;
+	pipelineInfo.pRasterizationState = &rasterizer;
+	pipelineInfo.pMultisampleState = &multisampling;
+	pipelineInfo.pDepthStencilState = &depthStencil;
+	pipelineInfo.pColorBlendState = &colorBlending;
+	pipelineInfo.pDynamicState = NULL; // Optional
+	pipelineInfo.layout = gPipeline._pipelineLayout;
+	pipelineInfo.renderPass = finalRenderPass;
+	pipelineInfo.subpass = 0;
+	pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
+	pipelineInfo.basePipelineIndex = -1; // Optional
+	if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, NULL, &gPipeline._pipeline) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create graphics pipeline!");
+	}
+
+	pipelines["final_image"] = gPipeline;
+
+	for (VkShaderModule smod : shaders) vkDestroyShaderModule(device, smod, NULL);
 }
 
 void PrismRenderer::createShadowFrameBuffers()
@@ -768,11 +1306,160 @@ void PrismRenderer::createShadowFrameBuffers()
 	}
 }
 
+void PrismRenderer::createGbufferFrameBuffers()
+{
+	for (size_t i = 0; i < frameDatas.size(); i++) {
+		frameDatas[i].colorImage = vkutils::createGPUImage(
+			device,
+			physicalDevice,
+			swapChainExtent.width, swapChainExtent.height,
+			VK_FORMAT_R8G8B8A8_UNORM,
+			VK_IMAGE_TILING_OPTIMAL,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			VK_IMAGE_VIEW_TYPE_2D,
+			VK_IMAGE_ASPECT_COLOR_BIT
+		);
+		vkutils::transitionImageLayout(
+			device,
+			uploadCmdPool,
+			transferQueue,
+			frameDatas[i].colorImage._image,
+			VK_FORMAT_R8G8B8A8_UNORM,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+			VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+			{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
+		);
+
+		frameDatas[i].positionImage = vkutils::createGPUImage(
+			device,
+			physicalDevice,
+			swapChainExtent.width, swapChainExtent.height,
+			VK_FORMAT_R32G32B32A32_SFLOAT,
+			VK_IMAGE_TILING_OPTIMAL,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			VK_IMAGE_VIEW_TYPE_2D,
+			VK_IMAGE_ASPECT_COLOR_BIT
+		);
+		vkutils::transitionImageLayout(
+			device,
+			uploadCmdPool,
+			transferQueue,
+			frameDatas[i].positionImage._image,
+			VK_FORMAT_R32G32B32A32_SFLOAT,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+			VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+			{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
+		);
+
+		frameDatas[i].normalImage = vkutils::createGPUImage(
+			device,
+			physicalDevice,
+			swapChainExtent.width, swapChainExtent.height,
+			VK_FORMAT_R8G8B8A8_UNORM,
+			VK_IMAGE_TILING_OPTIMAL,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			VK_IMAGE_VIEW_TYPE_2D,
+			VK_IMAGE_ASPECT_COLOR_BIT
+		);
+		vkutils::transitionImageLayout(
+			device,
+			uploadCmdPool,
+			transferQueue,
+			frameDatas[i].normalImage._image,
+			VK_FORMAT_R8G8B8A8_UNORM,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+			VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+			{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
+		);
+
+		frameDatas[i].seImage = vkutils::createGPUImage(
+			device,
+			physicalDevice,
+			swapChainExtent.width, swapChainExtent.height,
+			VK_FORMAT_R8G8B8A8_UNORM,
+			VK_IMAGE_TILING_OPTIMAL,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			VK_IMAGE_VIEW_TYPE_2D,
+			VK_IMAGE_ASPECT_COLOR_BIT
+		);
+		vkutils::transitionImageLayout(
+			device,
+			uploadCmdPool,
+			transferQueue,
+			frameDatas[i].seImage._image,
+			VK_FORMAT_R8G8B8A8_UNORM,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+			VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+			{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
+		);
+
+		std::vector<GPUImage> attachments = { frameDatas[i].colorImage, frameDatas[i].positionImage, frameDatas[i].normalImage, frameDatas[i].seImage, depthImage };
+		frameDatas[i].gbufferFrameBuffer = vkutils::createFrameBuffer(
+			device,
+			gbufferRenderPass,
+			attachments,
+			swapChainExtent.width, swapChainExtent.height,
+			1
+		);
+	}
+}
+
+void PrismRenderer::createAmbientFrameBuffers()
+{
+	for (size_t i = 0; i < frameDatas.size(); i++) {
+		frameDatas[i].ambientImage = vkutils::createGPUImage(
+			device,
+			physicalDevice,
+			swapChainExtent.width, swapChainExtent.height,
+			VK_FORMAT_R8_UNORM,
+			VK_IMAGE_TILING_OPTIMAL,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			VK_IMAGE_VIEW_TYPE_2D,
+			VK_IMAGE_ASPECT_COLOR_BIT
+		);
+		std::vector<GPUImage> attachments = { frameDatas[i].ambientImage };
+		frameDatas[i].ambientFrameBuffer = vkutils::createFrameBuffer(
+			device,
+			ambientRenderPass,
+			attachments,
+			swapChainExtent.width, swapChainExtent.height,
+			1
+		);
+	}
+}
+
+void PrismRenderer::createFinalFrameBuffers()
+{
+	for (size_t i = 0; i < frameDatas.size(); i++) {
+		std::vector<GPUImage> attachments = { frameDatas[i].swapChainImage };
+		frameDatas[i].swapChainFrameBuffer = vkutils::createFrameBuffer(
+			device,
+			finalRenderPass,
+			attachments,
+			swapChainExtent.width, swapChainExtent.height,
+			1
+		);
+	}
+}
+
 void PrismRenderer::makeIndirectCmdBuffer()
 {
 }
 
-void PrismRenderer::addDLightCmds(VkCommandBuffer cmdBuffer, uint32_t frameNo)
+void PrismRenderer::addDLightCmds(VkCommandBuffer cmdBuffer, size_t frameNo)
 {
 	std::vector<VkClearValue> clearValues = std::vector<VkClearValue>(2);
 	clearValues[0].color = { 1.0f, 1.0f, 1.0f, 1.0f };
@@ -780,10 +1467,10 @@ void PrismRenderer::addDLightCmds(VkCommandBuffer cmdBuffer, uint32_t frameNo)
 
 	GPUPipeline dLightPipeline = pipelines["dlight_smap"];
 
-	for (uint32_t lidx = 0; lidx < MAX_DIRECTIONAL_LIGHTS; lidx++) {
-		if (!(lights[MAX_POINT_LIGHTS + lidx].flags.x & 1)) continue;
+	for (size_t lidx = 0; lidx < MAX_DIRECTIONAL_LIGHTS; lidx++) {
+		if (!(lights[MAX_NS_LIGHTS + MAX_POINT_LIGHTS + lidx].flags.x & 1)) continue;
 		GPULightPC tlpc;
-		tlpc.idx.x = MAX_POINT_LIGHTS + lidx;
+		tlpc.idx.x = int(MAX_NS_LIGHTS + MAX_POINT_LIGHTS + lidx);
 		tlpc.viewproj = glm::mat4(1);
 
 		vkutils::beginRenderPass(shadowRenderPass, frameDatas[frameNo].dShadowFrameBuffer, dlight_smap_extent, cmdBuffer, clearValues);
@@ -796,11 +1483,12 @@ void PrismRenderer::addDLightCmds(VkCommandBuffer cmdBuffer, uint32_t frameNo)
 		size_t robjCount = renderObjects.size();
 		for (size_t ro_idx = 0; ro_idx < robjCount; ro_idx++) {
 			RenderObject robj = renderObjects[ro_idx];
+			if (!robj.renderable || !robj.shadowcasting) continue;
 
-			VkBuffer vertexBuffers[] = { robj.mesh->_vertexBuffer._buffer };
+			VkBuffer vertexBuffers[] = { (robj.maintained_mesh) ? robj.mmesh->_vertexBuffer[frameNo]._buffer : robj.mesh->_vertexBuffer._buffer };
 			VkDeviceSize offsets[] = { 0 };
 			vkCmdBindVertexBuffers(cmdBuffer, 0, 1, vertexBuffers, offsets);
-			vkCmdBindIndexBuffer(cmdBuffer, robj.mesh->_indexBuffer._buffer, 0, VK_INDEX_TYPE_UINT32);
+			vkCmdBindIndexBuffer(cmdBuffer, (robj.maintained_mesh) ? robj.mmesh->_indexBuffer[frameNo]._buffer : robj.mesh->_indexBuffer._buffer, 0, VK_INDEX_TYPE_UINT32);
 
 			robj.drawMesh(cmdBuffer, ro_idx);
 		}
@@ -874,7 +1562,7 @@ void PrismRenderer::addDLightCmds(VkCommandBuffer cmdBuffer, uint32_t frameNo)
 
 }
 
-void PrismRenderer::addPLightCmds(VkCommandBuffer cmdBuffer, uint32_t frameNo)
+void PrismRenderer::addPLightCmds(VkCommandBuffer cmdBuffer, size_t frameNo)
 {
 	std::vector<VkClearValue> clearValues = std::vector<VkClearValue>(2);
 	clearValues[0].color = { 1.0f, 1.0f, 1.0f, 1.0f };
@@ -885,7 +1573,7 @@ void PrismRenderer::addPLightCmds(VkCommandBuffer cmdBuffer, uint32_t frameNo)
 	glm::mat4 projMatrix = glm::perspective(glm::radians(90.0f), float(plight_smap_extent.width) / float(plight_smap_extent.height), 0.01f, 1000.0f);
 
 	for (uint32_t lidx = 0; lidx < MAX_POINT_LIGHTS; lidx++) {
-		if (!(lights[lidx].flags.x & 1)) continue;
+		if (!(lights[MAX_NS_LIGHTS + lidx].flags.x & 1)) continue;
 		for (uint32_t face = 0; face < 6; face++) {
 			glm::mat4 viewMatrix = glm::mat4(1);
 
@@ -923,12 +1611,12 @@ void PrismRenderer::addPLightCmds(VkCommandBuffer cmdBuffer, uint32_t frameNo)
 			size_t robjCount = renderObjects.size();
 			for (size_t ro_idx = 0; ro_idx < robjCount; ro_idx++) {
 				RenderObject robj = renderObjects[ro_idx];
+				if (!robj.renderable || !robj.shadowcasting) continue;
 
-				VkBuffer vertexBuffers[] = { robj.mesh->_vertexBuffer._buffer };
+				VkBuffer vertexBuffers[] = { (robj.maintained_mesh) ? robj.mmesh->_vertexBuffer[frameNo]._buffer : robj.mesh->_vertexBuffer._buffer };
 				VkDeviceSize offsets[] = { 0 };
 				vkCmdBindVertexBuffers(cmdBuffer, 0, 1, vertexBuffers, offsets);
-				vkCmdBindIndexBuffer(cmdBuffer, robj.mesh->_indexBuffer._buffer, 0, VK_INDEX_TYPE_UINT32);
-				
+				vkCmdBindIndexBuffer(cmdBuffer, (robj.maintained_mesh) ? robj.mmesh->_indexBuffer[frameNo]._buffer :robj.mesh->_indexBuffer._buffer, 0, VK_INDEX_TYPE_UINT32);
 				robj.drawMesh(cmdBuffer, ro_idx);
 			}
 			vkCmdEndRenderPass(cmdBuffer);
@@ -1009,7 +1697,69 @@ void PrismRenderer::addPLightCmds(VkCommandBuffer cmdBuffer, uint32_t frameNo)
 	}
 }
 
-void PrismRenderer::addFinalMeshCmds(VkCommandBuffer cmdBuffer, uint32_t frameNo)
+void PrismRenderer::addGbufferCmds(VkCommandBuffer cmdBuffer, size_t frameNo)
+{
+	std::vector<VkClearValue> clearValues = std::vector<VkClearValue>(5);
+	clearValues[0].color = { 0.0f, 0.0f, 0.0f, 1.0f };
+	clearValues[1].color = { 0.0f, 0.0f, 0.0f, 1.0f };
+	clearValues[2].color = { 0.0f, 0.0f, 0.0f, 1.0f };
+	clearValues[3].color = { 0.0f, 0.0f, 0.0f, 1.0f };
+	clearValues[4].depthStencil = { 1.0f, 0 };
+
+	vkutils::beginRenderPass(gbufferRenderPass, frameDatas[frameNo].gbufferFrameBuffer, swapChainExtent, cmdBuffer, clearValues);
+
+	size_t robjCount = renderObjects.size();
+
+	GPUPipeline gbuffer_pipeline = pipelines["gbuffer"];
+	gbuffer_pipeline.bindPipeline(cmdBuffer);
+
+	for (size_t ro_idx = 0; ro_idx < robjCount; ro_idx++) {
+		RenderObject robj = renderObjects[ro_idx];
+		if (!robj.renderable) continue;
+
+		VkBuffer vertexBuffers[] = { (robj.maintained_mesh) ? robj.mmesh->_vertexBuffer[frameNo]._buffer : robj.mesh->_vertexBuffer._buffer };
+		VkDeviceSize offsets[] = { 0 };
+		vkCmdBindVertexBuffers(cmdBuffer, 0, 1, vertexBuffers, offsets);
+		vkCmdBindIndexBuffer(cmdBuffer, (robj.maintained_mesh) ? robj.mmesh->_indexBuffer[frameNo]._buffer : robj.mesh->_indexBuffer._buffer, 0, VK_INDEX_TYPE_UINT32);
+		gbuffer_pipeline.bindPipelineDSets(
+			cmdBuffer,
+			{
+				frameDatas[frameNo].setBuffers["camera"]._dSet,
+				frameDatas[frameNo].setBuffers["object"]._dSet,
+				robj.texmaps->_dSet,
+			},
+			{}
+		);
+		robj.drawMesh(cmdBuffer, ro_idx);
+	}
+	vkCmdEndRenderPass(cmdBuffer);
+}
+
+void PrismRenderer::addAmbientCmds(VkCommandBuffer cmdBuffer, size_t frameNo)
+{
+	std::vector<VkClearValue> clearValues = std::vector<VkClearValue>(1);
+	clearValues[0].color = { 0.0f, 0.0f, 0.0f, 1.0f };
+
+	vkutils::beginRenderPass(ambientRenderPass, frameDatas[frameNo].ambientFrameBuffer, swapChainExtent, cmdBuffer, clearValues);
+
+	size_t robjCount = renderObjects.size();
+
+	GPUPipeline ambient_pipeline = pipelines["ambient"];
+	ambient_pipeline.bindPipeline(cmdBuffer);
+	ambient_pipeline.bindPipelineDSets(
+		cmdBuffer,
+		{
+			frameDatas[frameNo].positionDset,
+			frameDatas[frameNo].normalImageDset,
+			frameDatas[frameNo].setBuffers["camera"]._dSet,
+		},
+		{}
+	);
+	vkCmdDraw(cmdBuffer, 3, 1, 0, 0);
+	vkCmdEndRenderPass(cmdBuffer);
+}
+
+void PrismRenderer::addFinalMeshCmds(VkCommandBuffer cmdBuffer, size_t frameNo)
 {
 	std::vector<VkClearValue> clearValues = std::vector<VkClearValue>(2);
 	clearValues[0].color = { 0.0f, 0.0f, 0.0f, 1.0f };
@@ -1019,32 +1769,22 @@ void PrismRenderer::addFinalMeshCmds(VkCommandBuffer cmdBuffer, uint32_t frameNo
 
 	size_t robjCount = renderObjects.size();
 
-	GPUPipeline final_pipeline = pipelines["final_mesh"];
+	GPUPipeline final_pipeline = pipelines["final_image"];
 	final_pipeline.bindPipeline(cmdBuffer);
+	final_pipeline.bindPipelineDSets(
+		cmdBuffer,
+		{
+			frameDatas[frameNo].setBuffers["camera"]._dSet,
+			frameDatas[frameNo].setBuffers["scene"]._dSet,
+			frameDatas[frameNo].finalComposeDset,
+			frameDatas[frameNo].setBuffers["light"]._dSet,
+			frameDatas[frameNo].shadow_cube_dset,
+			frameDatas[frameNo].shadow_dir_dset,
+		},
+		{}
+	);
+	vkCmdDraw(cmdBuffer, 3, 1, 0, 0);
 
-	for (size_t ro_idx = 0; ro_idx < robjCount; ro_idx++) {
-		RenderObject robj = renderObjects[ro_idx];
-
-		VkBuffer vertexBuffers[] = { robj.mesh->_vertexBuffer._buffer };
-		VkDeviceSize offsets[] = { 0 };
-		vkCmdBindVertexBuffers(cmdBuffer, 0, 1, vertexBuffers, offsets);
-		vkCmdBindIndexBuffer(cmdBuffer, robj.mesh->_indexBuffer._buffer, 0, VK_INDEX_TYPE_UINT32);
-		final_pipeline.bindPipelineDSets(
-			cmdBuffer,
-			{
-				frameDatas[frameNo].setBuffers["camera"]._dSet,
-				frameDatas[frameNo].setBuffers["object"]._dSet,
-				frameDatas[frameNo].setBuffers["scene"]._dSet,
-				robj.texture->_dSet,
-				frameDatas[frameNo].setBuffers["light"]._dSet,
-				frameDatas[frameNo].shadow_cube_dset,
-				frameDatas[frameNo].shadow_dir_dset,
-				robj.nmap->_dSet
-			},
-			{}
-		);
-		robj.drawMesh(cmdBuffer, ro_idx);
-	}
 	vkCmdEndRenderPass(cmdBuffer);
 }
 
@@ -1059,6 +1799,8 @@ void PrismRenderer::createFinalCmdBuffers() {
 		if (vkBeginCommandBuffer(frameDatas[i].commandBuffer, &beginInfo) != VK_SUCCESS) throw std::runtime_error("failed to begin recording command buffer!");
 		addDLightCmds(frameDatas[i].commandBuffer, i);
 		addPLightCmds(frameDatas[i].commandBuffer, i);
+		addGbufferCmds(frameDatas[i].commandBuffer, i);
+		addAmbientCmds(frameDatas[i].commandBuffer, i);
 		addFinalMeshCmds(frameDatas[i].commandBuffer, i);
 		if (vkEndCommandBuffer(frameDatas[i].commandBuffer) != VK_SUCCESS) throw std::runtime_error("failed to record command buffer!");
 	}
@@ -1070,14 +1812,33 @@ void PrismRenderer::refreshFinalCmdBuffers() {
 
 		VkCommandBufferBeginInfo beginInfo{};
 		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		beginInfo.flags = 0; // Optional
+		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT; // Optional
 		beginInfo.pInheritanceInfo = NULL; // Optional
 		if (vkBeginCommandBuffer(frameDatas[i].commandBuffer, &beginInfo) != VK_SUCCESS) throw std::runtime_error("failed to begin recording command buffer!");
 		addDLightCmds(frameDatas[i].commandBuffer, i);
 		addPLightCmds(frameDatas[i].commandBuffer, i);
+		addGbufferCmds(frameDatas[i].commandBuffer, i);
+		addAmbientCmds(frameDatas[i].commandBuffer, i);
 		addFinalMeshCmds(frameDatas[i].commandBuffer, i);
 		if (vkEndCommandBuffer(frameDatas[i].commandBuffer) != VK_SUCCESS) throw std::runtime_error("failed to record command buffer!");
 	}
+}
+
+void PrismRenderer::genFinalCmdBuffers(size_t frameNo) {
+	if (vkResetCommandBuffer(frameDatas[frameNo].commandBuffer, 0) != VK_SUCCESS) throw std::runtime_error("failed to reset command buffers!");
+
+	VkCommandBufferBeginInfo beginInfo{};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT; // Optional
+	beginInfo.pInheritanceInfo = NULL; // Optional
+
+	if (vkBeginCommandBuffer(frameDatas[frameNo].commandBuffer, &beginInfo) != VK_SUCCESS) throw std::runtime_error("failed to begin recording command buffer!");
+	addDLightCmds(frameDatas[frameNo].commandBuffer, frameNo);
+	addPLightCmds(frameDatas[frameNo].commandBuffer, frameNo);
+	addGbufferCmds(frameDatas[frameNo].commandBuffer, frameNo);
+	addAmbientCmds(frameDatas[frameNo].commandBuffer, frameNo);
+	addFinalMeshCmds(frameDatas[frameNo].commandBuffer, frameNo);
+	if (vkEndCommandBuffer(frameDatas[frameNo].commandBuffer) != VK_SUCCESS) throw std::runtime_error("failed to record command buffer!");
 }
 
 void PrismRenderer::createSyncObjects() {
@@ -1164,23 +1925,37 @@ void PrismRenderer::initVulkan()
 	getVkInstance();
 	createSurface();
 	getVkLogicalDevice();
+
 	createSwapChain(vkutils::querySwapChainSupport(physicalDevice, surface));
 	makeBasicCmdPools();
 	createDescriptorPool();
 	makeBasicDSetLayouts();
 	createBasicSamplers();
+
 	createDepthImage();
 	makeDLightMaps();
 	makePLightMaps();
+
 	createShadowRenderPass();
+	createGbufferRenderPass();
+	createAmbientRenderPass();
 	createFinalRenderPass();
+
+	createShadowFrameBuffers();
+	createGbufferFrameBuffers();
+	createAmbientFrameBuffers();
+	createFinalFrameBuffers();
+
 	makeBasicDSets();
-	makeFinalPipeline();
+
 	makeDLightShadowPipeline();
 	makePLightShadowPipeline();
-	createFinalFrameBuffers();
-	createShadowFrameBuffers();
+	makeGbufferPipeline();
+	makeAmbientPipeline();
+	makeFinalPipeline();
+
 	createFinalCmdBuffers();
+
 	createSyncObjects();
 }
 
@@ -1204,18 +1979,27 @@ void PrismRenderer::recreateSwapChain()
 	createSwapChain(scdetails);
 	if (partial_cleanup) {
 		createDepthImage();
-		makeFinalPipeline();
+		createShadowFrameBuffers();
+		createGbufferFrameBuffers();
+		createAmbientFrameBuffers();
 		createFinalFrameBuffers();
+		makeGbufferPipeline();
+		makeAmbientPipeline();
+		makeFinalPipeline();
 		createFinalCmdBuffers();
 	}
 	else{
 		makeBasicCmdPools();
 		createDepthImage();
+		createFinalFrameBuffers();
+		createGbufferFrameBuffers();
+		createAmbientFrameBuffers();
+		createShadowFrameBuffers();
 		makeBasicDSets();
+		makeGbufferPipeline();
+		makeAmbientPipeline();
 		makeFinalPipeline();
 		makePLightShadowPipeline();
-		createFinalFrameBuffers();
-		createShadowFrameBuffers();
 		createFinalCmdBuffers();
 		imagesInFlight.resize(frameDatas.size(), VK_NULL_HANDLE);
 	}
@@ -1241,7 +2025,7 @@ void PrismRenderer::updateUBOs(uint32_t curr_img)
 		lastFrameTime = currentFrameTime;
 	}
 
-	uboUpdateCallback(framedeltat, this);
+	uboUpdateCallback(framedeltat, this, curr_img);
 
 	void* tscenedata;
 	vkMapMemory(device, frameDatas[curr_img].setBuffers["scene"]._gBuffer._bufferMemory, 0, sizeof(currentScene), 0, &tscenedata);
@@ -1253,11 +2037,11 @@ void PrismRenderer::updateUBOs(uint32_t curr_img)
 	memcpy(camdata, &currentCamera, sizeof(GPUCameraData));
 	vkUnmapMemory(device, frameDatas[curr_img].setBuffers["camera"]._gBuffer._bufferMemory);
 
-	for (int pli = 0; pli < MAX_POINT_LIGHTS; pli++) lights[pli].viewproj = glm::translate(glm::mat4(1.0f), -glm::vec3(lights[pli].pos));
-	for (int pli = 0; pli < MAX_DIRECTIONAL_LIGHTS; pli++) {
-		lights[MAX_POINT_LIGHTS + pli].viewproj = lights[MAX_POINT_LIGHTS + pli].proj * glm::lookAt(
-			glm::vec3(lights[MAX_POINT_LIGHTS + pli].pos),
-			glm::vec3(lights[MAX_POINT_LIGHTS + pli].pos + glm::normalize(lights[MAX_POINT_LIGHTS + pli].dir)),
+	for (size_t pli = 0; pli < MAX_POINT_LIGHTS; pli++) lights[MAX_NS_LIGHTS + pli].viewproj = glm::translate(glm::mat4(1.0f), -glm::vec3(lights[MAX_NS_LIGHTS + pli].pos));
+	for (size_t pli = 0; pli < MAX_DIRECTIONAL_LIGHTS; pli++) {
+		lights[MAX_NS_LIGHTS + MAX_POINT_LIGHTS + pli].viewproj = lights[MAX_NS_LIGHTS + MAX_POINT_LIGHTS + pli].proj * glm::lookAt(
+			glm::vec3(lights[MAX_NS_LIGHTS + MAX_POINT_LIGHTS + pli].pos),
+			glm::vec3(lights[MAX_NS_LIGHTS + MAX_POINT_LIGHTS + pli].pos + glm::normalize(lights[MAX_NS_LIGHTS + MAX_POINT_LIGHTS + pli].dir)),
 			glm::vec3(0, 1, 0)
 		);
 	}
@@ -1314,9 +2098,16 @@ void PrismRenderer::drawFrame() {
 	spawn_mut.unlock();
 
 	updateUBOs(imageIndex);
+	
 	//inputmgr.clearMOffset();
 
 	spawn_mut.lock();
+
+	genFinalCmdBuffers(currentFrame);
+	//delegate_gen_final_cmd_bufs(this, currentFrame);
+	//renderer_tpool->add_task(&delegate_gen_final_cmd_bufs, this, currentFrame);;
+	//renderer_tpool->wait_till_done();
+
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
@@ -1331,6 +2122,8 @@ void PrismRenderer::drawFrame() {
 	VkSemaphore signalSemaphores[] = { frameDatas[currentFrame].renderSemaphore };
 	submitInfo.signalSemaphoreCount = 1;
 	submitInfo.pSignalSemaphores = signalSemaphores;
+
+	
 
 	vkResetFences(device, 1, &frameDatas[currentFrame].renderFence);
 
@@ -1374,6 +2167,7 @@ void PrismRenderer::mainLoop()
 
 void PrismRenderer::run()
 {
+	//renderer_tpool->run();
 	mainLoop();
 	cleanup();
 }
@@ -1402,19 +2196,37 @@ Mesh* PrismRenderer::addMesh(std::string meshFilePath)
 	return &meshes[meshFilePath];
 }
 
-GPUTexture2d* PrismRenderer::loadTexture(std::string texturePath, std::string texSamplerType) {
+void PrismRenderer::refreshMeshVB(std::string id, int fno)
+{
+	auto meshit = maintained_meshes.find(id);
+	if (meshit != maintained_meshes.end()) {
+		MaintainedMesh* tmesh = meshit->second;
+		void* tmesh_vbt;
+		vkMapMemory(device, tmesh->_vertexBuffer[fno]._bufferMemory, 0, sizeof(Vertex) * tmesh->_vertices.size(), 0, &tmesh_vbt);
+		memcpy(tmesh_vbt, tmesh->_vertices.data(), sizeof(Vertex) * tmesh->_vertices.size());
+		vkUnmapMemory(device, tmesh->_vertexBuffer[fno]._bufferMemory);
+
+		void* tmesh_ibt;
+		vkMapMemory(device, tmesh->_indexBuffer[fno]._bufferMemory, 0, sizeof(uint32_t) * tmesh->_indices.size(), 0, &tmesh_ibt);
+		memcpy(tmesh_ibt, tmesh->_indices.data(), sizeof(uint32_t) * tmesh->_indices.size());
+		vkUnmapMemory(device, tmesh->_indexBuffer[fno]._bufferMemory);
+	}
+}
+
+GPUImage PrismRenderer::loadSingleTexture(std::string texPath, VkFormat imgFormat)
+{
 	int texWidth, texHeight, texChannels;
-	stbi_uc* pixels = stbi_load(texturePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+	stbi_uc* pixels = stbi_load(texPath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 	VkDeviceSize imageSize = texWidth * texHeight * 4;
 
 	if (!pixels) throw std::runtime_error("failed to load texture image!");
 
-	GPUTexture2d tex;
-	tex._gImage = vkutils::createGPUImage(
+	GPUImage tmp_gimg;
+	tmp_gimg = vkutils::createGPUImage(
 		device,
 		physicalDevice,
 		texWidth, texHeight,
-		VK_FORMAT_R8G8B8A8_SRGB,
+		imgFormat,
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -1425,8 +2237,8 @@ GPUTexture2d* PrismRenderer::loadTexture(std::string texturePath, std::string te
 		device,
 		uploadCmdPool,
 		transferQueue,
-		tex._gImage._image,
-		VK_FORMAT_R8G8B8A8_SRGB,
+		tmp_gimg._image,
+		imgFormat,
 		VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
@@ -1439,32 +2251,49 @@ GPUTexture2d* PrismRenderer::loadTexture(std::string texturePath, std::string te
 		transferQueue,
 		imageSize,
 		pixels,
-		tex._gImage,
+		tmp_gimg,
 		{ 0, 0, 0 },
 		{ (uint32_t)texWidth, (uint32_t)texHeight, 1 }
 	);
 	stbi_image_free(pixels);
 	vkutils::transitionImageLayout(
 		device,
-		frameDatas[(currentFrame + 1)/MAX_FRAMES_IN_FLIGHT].commandPool,
+		frameDatas[currentFrame % MAX_FRAMES_IN_FLIGHT].commandPool,
 		graphicsQueue,
-		tex._gImage._image,
-		VK_FORMAT_R8G8B8A8_SRGB,
+		tmp_gimg._image,
+		imgFormat,
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		VK_PIPELINE_STAGE_TRANSFER_BIT,
 		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
 	);
-	tex._dSet = vkutils::createImageDSet(
-		device,
-		descriptorPool,
-		dSetLayouts["frag_sampler"],
-		{ tex._gImage },
-		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		texSamplers["linear"]
-	);
-	textures[texturePath] = tex;
-	return &textures[texturePath];
+	return tmp_gimg;
+}
+
+GPUTextureSet* PrismRenderer::loadObjTextures(
+	std::string colorTexPath,
+	std::string normalTexPath,
+	std::string esTexPath,
+	std::string texSamplerType
+) {
+	auto texit = textures.find(colorTexPath + "_" + normalTexPath + "_" + esTexPath);
+	if (texit == textures.end()) {
+		GPUTextureSet gts;
+		gts._gImages.push_back(loadSingleTexture(colorTexPath));
+		gts._gImages.push_back(loadSingleTexture(normalTexPath, VK_FORMAT_R8G8B8A8_UNORM));
+		gts._gImages.push_back(loadSingleTexture(esTexPath, VK_FORMAT_R8G8B8A8_UNORM));
+		gts._dSet = vkutils::createImageDSet(
+			device,
+			descriptorPool,
+			dSetLayouts["frag_sampler_3"],
+			gts._gImages,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			texSamplers["linear"]
+		);
+
+		textures[colorTexPath + "_" + normalTexPath + "_" + esTexPath] = gts;
+	}
+	return &textures[colorTexPath + "_" + normalTexPath + "_" + esTexPath];
 }
 
 void PrismRenderer::addRenderObj(
@@ -1472,6 +2301,7 @@ void PrismRenderer::addRenderObj(
 	std::string meshFilePath,
 	std::string texFilePath,
 	std::string nMapFilePath,
+	std::string esMapFilePath,
 	std::string texSamplerType,
 	glm::mat4 initTransform,
 	bool include_in_final_render,
@@ -1488,21 +2318,10 @@ void PrismRenderer::addRenderObj(
 	if (meshit == meshes.end()) robj.mesh = addMesh(meshFilePath);
 	else robj.mesh = &(*meshit).second;
 
-	GPUTexture2d* texdata;
-	auto texit = textures.find(texFilePath);
-	if (texit == textures.end()) texdata = loadTexture(texFilePath, texSamplerType);
-	else texdata = &(*texit).second;
-	robj.texture = texdata;
-
-	GPUTexture2d* nmapdata;
-	texit = textures.find(nMapFilePath);
-	if (texit == textures.end()) nmapdata = loadTexture(nMapFilePath, texSamplerType);
-	else nmapdata = &(*texit).second;
-	robj.nmap = nmapdata;
+	robj.texmaps = loadObjTextures(texFilePath, nMapFilePath, esMapFilePath, texSamplerType);
 
 	renderObjects.push_back(robj);
 
-	refreshFinalCmdBuffers();
 	spawn_mut.unlock();
 }
 
@@ -1511,6 +2330,7 @@ void PrismRenderer::addRenderObj(
 	Mesh meshData,
 	std::string texFilePath,
 	std::string nMapFilePath,
+	std::string esMapFilePath,
 	std::string texSamplerType,
 	glm::mat4 initTransform,
 	bool include_in_final_render,
@@ -1546,21 +2366,61 @@ void PrismRenderer::addRenderObj(
 	}
 	robj.mesh = &(*meshit).second;
 
-	GPUTexture2d* texdata;
-	auto texit = textures.find(texFilePath);
-	if (texit == textures.end()) texdata = loadTexture(texFilePath, texSamplerType);
-	else texdata = &(*texit).second;
-	robj.texture = texdata;
-
-	GPUTexture2d* nmapdata;
-	texit = textures.find(nMapFilePath);
-	if (texit == textures.end()) nmapdata = loadTexture(nMapFilePath, texSamplerType);
-	else nmapdata = &(*texit).second;
-	robj.nmap = nmapdata;
+	robj.texmaps = loadObjTextures(texFilePath, nMapFilePath, esMapFilePath, texSamplerType);
 
 	renderObjects.push_back(robj);
 
-	refreshFinalCmdBuffers();
+	spawn_mut.unlock();
+}
+
+void PrismRenderer::addMaintainedRenderObj(
+	std::string id,
+	MaintainedMesh* meshData,
+	std::string texFilePath,
+	std::string nMapFilePath,
+	std::string esMapFilePath,
+	std::string texSamplerType,
+	glm::mat4 initTransform,
+	bool include_in_final_render,
+	bool include_in_shadow_map
+) {
+	spawn_mut.lock();
+	RenderObject robj;
+	robj.id = id;
+	robj.maintained_mesh = true;
+	robj.renderable = include_in_final_render;
+	robj.shadowcasting = include_in_shadow_map;
+	robj.uboData.model = initTransform;
+
+	auto meshit = maintained_meshes.find(id);
+	if (meshit == maintained_meshes.end()) {
+		for (int i = 0; i < 3; i++) {
+			meshData->_vertexBuffer[i] = vkutils::createBuffer(
+				device, physicalDevice,
+				sizeof(Vertex) * meshData->_vertices.size(), meshData->_vertices.data(),
+				VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+				uploadCmdPool,
+				transferQueue
+			);
+			meshData->_indexBuffer[i] = vkutils::createBuffer(
+				device, physicalDevice,
+				sizeof(uint32_t) * meshData->_indices.size(), meshData->_indices.data(),
+				VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+				uploadCmdPool,
+				transferQueue
+			);
+		}
+		maintained_meshes[id] = meshData;
+		meshit = maintained_meshes.find(id);
+	}
+	robj.mmesh = meshit->second;
+
+	robj.texmaps = loadObjTextures(texFilePath, nMapFilePath, esMapFilePath, texSamplerType);
+
+	renderObjects.push_back(robj);
+
 	spawn_mut.unlock();
 }
 
@@ -1570,7 +2430,37 @@ void PrismRenderer::removeRenderObj(std::string id)
 	for (auto it = renderObjects.begin(); it != renderObjects.end(); it++) {
 		if (it->id == id) {
 			renderObjects.erase(it);
-			refreshFinalCmdBuffers();
+			break;
+		}
+	}
+	spawn_mut.unlock();
+}
+
+void PrismRenderer::removeRenderObj(size_t idx)
+{
+	spawn_mut.lock();
+	renderObjects.erase(renderObjects.begin() + idx);
+	spawn_mut.unlock();
+}
+
+void PrismRenderer::hideRenderObj(std::string id)
+{
+	spawn_mut.lock();
+	for (auto it = renderObjects.begin(); it != renderObjects.end(); it++) {
+		if (it->id == id) {
+			renderObjects.erase(it);
+			break;
+		}
+	}
+	spawn_mut.unlock();
+}
+
+void PrismRenderer::removeMaintainedRenderObj(std::string id)
+{
+	spawn_mut.lock();
+	for (auto it = renderObjects.begin(); it != renderObjects.end(); it++) {
+		if (it->id == id) {
+			renderObjects.erase(it);
 			break;
 		}
 	}
@@ -1594,6 +2484,10 @@ void PrismRenderer::cleanupSwapChain(bool destroy_only_swapchain)
 			vkutils::destroyGPUImage(device, fdata.dShadowMapTemp);
 			vkutils::destroyGPUImage(device, fdata.pShadowDepthImage);
 			vkutils::destroyGPUImage(device, fdata.dShadowDepthImage);
+			vkutils::destroyGPUImage(device, fdata.colorImage);
+			vkutils::destroyGPUImage(device, fdata.positionImage);
+			vkutils::destroyGPUImage(device, fdata.normalImage);
+			vkutils::destroyGPUImage(device, fdata.seImage);
 			for (GPUImage t : fdata.shadow_cube_maps) vkutils::destroyGPUImage(device, t);
 			for (GPUImage t : fdata.shadow_dir_maps) vkutils::destroyGPUImage(device, t);
 			fdata.shadow_cube_maps.clear();
@@ -1621,7 +2515,11 @@ void PrismRenderer::cleanup()
 	vkDestroyDescriptorPool(device, descriptorPool, NULL);
 	for (auto it : texSamplers) vkDestroySampler(device, it.second, NULL);
 	texSamplers.clear();
-	for (auto it : textures) vkutils::destroyGPUImage(device, it.second._gImage);
+	for (auto it : textures) {
+		for (auto jt : it.second._gImages) {
+			vkutils::destroyGPUImage(device, jt);
+		}
+	}
 	textures.clear();
 	for (auto it : pipelines) {
 		vkDestroyPipeline(device, it.second._pipeline, NULL);
@@ -1633,8 +2531,16 @@ void PrismRenderer::cleanup()
 		vkutils::destroyBuffer(device, it.second._indexBuffer);
 	}
 	meshes.clear();
+	for (auto it : maintained_meshes) {
+		for (int i = 0; i < 3; i++) {
+			vkutils::destroyBuffer(device, it.second->_vertexBuffer[i]);
+			vkutils::destroyBuffer(device, it.second->_indexBuffer[i]);
+		}
+	}
+	maintained_meshes.clear();
 	vkDestroyCommandPool(device, uploadCmdPool, NULL);
 	vkDestroyRenderPass(device, shadowRenderPass, NULL);
+	vkDestroyRenderPass(device, ambientRenderPass, NULL);
 	vkDestroyRenderPass(device, finalRenderPass , NULL);
 	vkDestroyDevice(device, NULL);
 	if (enableValidationLayers) vkutils::DestroyDebugUtilsMessengerEXT(instance, debugMessenger, NULL);
@@ -1644,7 +2550,7 @@ void PrismRenderer::cleanup()
 	glfwTerminate();
 }
 
-PrismRenderer::PrismRenderer(GLFWwindow* glfwWindow, void (*nextFrameCallback) (float framedeltat, PrismRenderer* renderer))
+PrismRenderer::PrismRenderer(GLFWwindow* glfwWindow, void (*nextFrameCallback) (float framedeltat, PrismRenderer* renderer, uint32_t frameNo))
 {
 	window = glfwWindow;
 	uboUpdateCallback = nextFrameCallback;
@@ -1659,6 +2565,8 @@ PrismRenderer::PrismRenderer(GLFWwindow* glfwWindow, void (*nextFrameCallback) (
 	"VK_KHR_shader_draw_parameters",
 	"VK_EXT_shader_viewport_index_layer"
 	};
+
+	//renderer_tpool = new SimpleThreadPooler(RENDERER_THREADS);
 
 	initVulkan();
 }

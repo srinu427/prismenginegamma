@@ -36,7 +36,7 @@ public:
 	std::string name;
 	std::vector<BoneAnimStep> steps;
 	int curr_time = 0;
-	int total_time;
+	int total_time = 0;
 	int curr_step = 0;
 	bool loop_anim = true;
 
@@ -52,6 +52,7 @@ public:
 	std::string modelFilePath;
 	std::string texFilePath;
 	std::string nmapFilePath;
+	std::string semapFilePath;
 	LRS initLRS;
 	LRS objLRS;
 	std::unordered_map<std::string, BoneAnimData> anims;

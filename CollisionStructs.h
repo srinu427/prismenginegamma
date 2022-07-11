@@ -34,8 +34,8 @@ namespace collutils {
 	};
 
 	struct PlaneMeta {
-		std::vector<uint32_t> vinds;
-		uint32_t vinds_size = 0;
+		std::vector<size_t> vinds;
+		size_t vinds_size = 0;
 		glm::vec3 normal = glm::vec3(0);
 		glm::vec4 equation = glm::vec4(0);
 
@@ -63,11 +63,11 @@ namespace collutils {
 
 	struct PolyCollMesh {
 		std::vector<glm::vec3> verts;
-		uint32_t verts_size = 0;
+		size_t verts_size = 0;
 		std::vector<PlaneMeta> faces;
-		uint32_t faces_size = 0;
+		size_t faces_size = 0;
 		std::vector<glm::ivec2> edges;
-		uint32_t edges_size = 0;
+		size_t edges_size = 0;
 
 		float face_epsilon = 0.1f;
 		float friction = 1;
@@ -89,6 +89,9 @@ namespace collutils {
 		std::string coll_behav = "physics";
 		std::vector<std::string> coll_behav_args;
 
+		bool in_renderer = false;
+		size_t renderer_id = 0;
+
 
 		PolyCollMesh();
 		PolyCollMesh(PolyCollMesh* pcm);
@@ -101,6 +104,7 @@ namespace collutils {
 		int getAnimEventTime(std::string animName);
 		bool is_point_on_face_bounds(int plane_idx, glm::vec3 p);
 		bool is_point_on_face_bounds(int plane_idx, glm::vec3 p, float after_time);
+		CollPoint find_ray_first_coll(glm::vec3 raystart, glm::vec3 raydir);
 		CollPoint check_point_coll_with_face(int plane_idx, glm::vec3 p, glm::vec3 pvel, glm::vec3 pacc, float sim_time);
 		CollPoint check_point_list_coll_with_face(int plane_idx, glm::vec3* p_array, int point_count, glm::vec3 pvel, glm::vec3 pacc, float sim_time);
 	};
@@ -128,7 +132,7 @@ namespace collutils {
 		glm::vec3 _dir = glm::vec3(0);
 		bool m1side = false;
 		bool m2side = false;
-		int sep_plane_idx = 0;
+		size_t sep_plane_idx = 0;
 	};
 
 	TDCollisionMeta make_basic_collision(TDCollisionMeta cmeta, float eratio = 1.0f);

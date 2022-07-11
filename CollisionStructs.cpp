@@ -80,7 +80,7 @@ collutils::PolyCollMesh::~PolyCollMesh()
 {
 	verts.clear();
 	edges.clear();
-	for (int i = 0; i < faces_size; i++) {
+	for (uint32_t i = 0; i < faces_size; i++) {
 		faces[i].vinds.clear();
 	}
 	faces.clear();
@@ -89,12 +89,12 @@ collutils::PolyCollMesh::~PolyCollMesh()
 Mesh collutils::PolyCollMesh::gen_mesh()
 {
 	std::vector<Vertex> vlist;
-	for (int i = 0; i < faces_size; i ++ ){
+	for (uint32_t i = 0; i < faces_size; i ++ ){
 		PlaneMeta* plmet = &faces[i];
 		glm::vec3 uaxn = glm::normalize(verts[plmet->vinds[1]] - verts[plmet->vinds[0]]);
 		glm::vec3 vaxn = glm::cross(plmet->normal, uaxn);
 
-		for (int ti = 0; ti < plmet->vinds_size - 2; ti++) {
+		for (uint32_t ti = 0; ti < plmet->vinds_size - 2; ti++) {
 			Vertex vtmp;
 			vtmp.pos = verts[plmet->vinds[0]];
 			vtmp.normal = plmet->normal;
@@ -125,10 +125,10 @@ Mesh collutils::PolyCollMesh::gen_mesh()
 void collutils::PolyCollMesh::apply_displacement(glm::vec3 disp)
 {
 	_center += disp;
-	for (int i = 0; i < verts_size; i++) {
+	for (uint32_t i = 0; i < verts_size; i++) {
 		verts[i] += disp;
 	}
-	for (int i = 0; i < faces_size; i++) {
+	for (uint32_t i = 0; i < faces_size; i++) {
 		faces[i].process_plane(&verts);
 	}
 }
@@ -138,7 +138,7 @@ void collutils::PolyCollMesh::apply_LRS(LRS mlrs)
 	glm::mat4 tmat = mlrs.getTMatrix();
 	glm::vec3 cdisp = _init_center - _center;
 	apply_displacement(cdisp);
-	for (int i = 0; i < verts_size; i++) {
+	for (uint32_t i = 0; i < verts_size; i++) {
 		verts[i] = glm::vec3(mlrs.rotate * glm::vec4(verts[i], 1));
 	}
 	cdisp = mlrs.location - _center;
@@ -168,7 +168,7 @@ bool collutils::PolyCollMesh::is_point_on_face_bounds(int plane_idx, glm::vec3 p
 {
 	glm::vec4 pv4 = glm::vec4(p, 1);
 	PlaneMeta* plmet = &faces[plane_idx];
-	for (int i = 0; i < plmet->vinds_size; i++) {
+	for (uint32_t i = 0; i < plmet->vinds_size; i++) {
 		glm::vec3 tmp = glm::normalize(glm::cross(plmet->normal, verts[plmet->vinds[(i + 1) % plmet->vinds_size]] - verts[plmet->vinds[i]]));
 		glm::vec4 bplanet = glm::vec4(tmp, -glm::dot(tmp, verts[plmet->vinds[i]]));
 		if (glm::dot(bplanet, pv4) < 0) return false;
@@ -180,12 +180,32 @@ bool collutils::PolyCollMesh::is_point_on_face_bounds(int plane_idx, glm::vec3 p
 {
 	glm::vec4 pv4 = glm::vec4(p, 1);
 	PlaneMeta* plmet = &faces[plane_idx];
-	for (int i = 0; i < plmet->vinds_size; i++) {
+	for (uint32_t i = 0; i < plmet->vinds_size; i++) {
 		glm::vec3 tmp = glm::normalize(glm::cross(plmet->normal, verts[plmet->vinds[(i + 1) % plmet->vinds_size]] - verts[plmet->vinds[i]]));
 		glm::vec4 bplanet = glm::vec4(tmp, -glm::dot(tmp, verts[plmet->vinds[i]] + (_vel * after_time) + (0.5f * _acc * after_time * after_time)));
 		if (glm::dot(bplanet, pv4) < 0) return false;
 	}
 	return true;
+}
+
+collutils::CollPoint collutils::PolyCollMesh::find_ray_first_coll(glm::vec3 raystart, glm::vec3 raydir)
+{
+	CollPoint cpoint;
+	float min_rd = 100000;
+	for (uint32_t i = 0; i < faces_size; i++) {
+		if (glm::dot(faces[i].normal, raydir) < 0 && abs(glm::dot(faces[i].normal, raydir)) > 0) {
+			float t = -glm::dot(faces[i].equation, glm::vec4(raystart, 1))/glm::dot(faces[i].normal, raydir);
+			glm::vec3 rtp = raystart + (raydir * t);
+			if (t > 0 && t < min_rd && is_point_on_face_bounds(i, rtp)) {
+				min_rd = t;
+				cpoint.time = t;
+				cpoint.will_collide = true;
+				cpoint.displacement1 = rtp;
+			}
+		}
+	}
+	return cpoint;
+
 }
 
 collutils::TDCollisionMeta collutils::make_basic_collision(TDCollisionMeta cmeta, float eratio)

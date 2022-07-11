@@ -40,8 +40,8 @@ static void framebufferResizeCallback(GLFWwindow* window, int width, int height)
     if (!app->renderer->framebufferResized) app->renderer->framebufferResized = true;
 }
 
-void nextFrameCallBack(float framedeltat, PrismRenderer* renderer) {
-    if (appComps.logicmgr != NULL) appComps.logicmgr->pushToRenderer(renderer);
+void nextFrameCallBack(float framedeltat, PrismRenderer* renderer, uint32_t frameNo) {
+    if (appComps.logicmgr != NULL) appComps.logicmgr->pushToRenderer(renderer, frameNo);
 }
 
 int main() {

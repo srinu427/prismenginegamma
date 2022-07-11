@@ -19,7 +19,7 @@ public:
 		at_lock.unlock();
 		
 	};
-	void do_work();
+	void do_work(size_t tid);
 	void run();
 	void stop();
 	void wait_till_done();
@@ -27,6 +27,7 @@ private:
 	uint32_t MAX_TASKS = 1000;
 	uint32_t thread_limit;
 	std::vector<std::thread*> _wthreads;
+	std::vector<bool> _thread_running;
 	std::vector<std::function<void()>> _rem_tasks;
 	uint32_t rti = 0, rtj = 0;
 	std::mutex at_lock;

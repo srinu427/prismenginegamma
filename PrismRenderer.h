@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vkutils.h"
+#include "SimpleThreadPooler.h"
 
 #include <mutex>
 #include <vector>
@@ -8,9 +9,10 @@
 class PrismRenderer
 {
 public:
-	const unsigned int MAX_OBJECTS = 1000;
-	const unsigned int MAX_POINT_LIGHTS = 8;
-	const unsigned int MAX_DIRECTIONAL_LIGHTS = 20;
+	const size_t MAX_OBJECTS = 1000;
+	const size_t MAX_NS_LIGHTS = 30;
+	const size_t MAX_POINT_LIGHTS = 8;
+	const size_t MAX_DIRECTIONAL_LIGHTS = 8;
 
 	bool framebufferResized = false;
 	VkExtent2D swapChainExtent = { 1280, 720 };
@@ -23,17 +25,22 @@ public:
 	std::vector<GPULight> lights;
 
 	VkRenderPass finalRenderPass;
+	VkRenderPass ambientRenderPass;
+	VkRenderPass gbufferRenderPass;
 	VkRenderPass shadowRenderPass;
 	std::mutex spawn_mut;
 
-	PrismRenderer(GLFWwindow* glfwWindow, void(*nextFrameCallback)(float framedeltat, PrismRenderer* renderer));
-	void (*uboUpdateCallback) (float framedeltat, PrismRenderer* renderer);
+	bool refresh_cmd_buffers = false;
+
+	PrismRenderer(GLFWwindow* glfwWindow, void(*nextFrameCallback)(float framedeltat, PrismRenderer* renderer, uint32_t frameNo));
+	void (*uboUpdateCallback) (float framedeltat, PrismRenderer* renderer, uint32_t frameNo);
 	void run();
 	void addRenderObj(
 		std::string id,
 		std::string meshFilePath,
 		std::string texFilePath,
 		std::string nMapFilePath,
+		std::string esMapFilePath,
 		std::string texSamplerType,
 		glm::mat4 initTransform,
 		bool include_in_final_render = true,
@@ -44,12 +51,29 @@ public:
 		Mesh meshData,
 		std::string texFilePath,
 		std::string nMapFilePath,
+		std::string esMapFilePath,
 		std::string texSamplerType,
 		glm::mat4 initTransform,
 		bool include_in_final_render = true,
 		bool include_in_shadow_map = true
 	);
+	void addMaintainedRenderObj(
+		std::string id,
+		MaintainedMesh* meshData,
+		std::string texFilePath,
+		std::string nMapFilePath,
+		std::string esMapFilePath,
+		std::string texSamplerType,
+		glm::mat4 initTransform,
+		bool include_in_final_render = true,
+		bool include_in_shadow_map = true
+	);
+	void refreshMeshVB(std::string id, int fno);
 	void removeRenderObj(std::string id);
+	void removeRenderObj(size_t idx);
+	void hideRenderObj(std::string id);
+	void removeMaintainedRenderObj(std::string id);
+	void genFinalCmdBuffers(size_t frameNo);
 private:
 #ifdef NDEBUG
 	const bool enableValidationLayers = false;
@@ -68,7 +92,7 @@ private:
 	VkQueue graphicsQueue, presentQueue, transferQueue;
 	VkSurfaceKHR surface;
 
-	unsigned int MAX_FRAMES_IN_FLIGHT = 3;
+	size_t MAX_FRAMES_IN_FLIGHT = 3;
 
 	VkSwapchainKHR swapChain;
 	VkFormat swapChainImageFormat;
@@ -77,12 +101,12 @@ private:
 	std::unordered_map<std::string, VkDescriptorSetLayout> dSetLayouts;
 	std::unordered_map<std::string, GPUPipeline> pipelines;
 	std::unordered_map<std::string, Mesh> meshes;
-	std::unordered_map<std::string, GPUTexture2d> textures;
+	std::unordered_map<std::string, MaintainedMesh*> maintained_meshes;
+	std::unordered_map<std::string, GPUTextureSet> textures;
 	std::unordered_map<std::string, VkSampler> texSamplers;
 
 	std::vector<GPUBuffer> uniformBuffers;
 
-	bool refresh_cmd_buffers = false;
 	std::vector<GPUFrameData> frameDatas;
 	size_t currentFrame = 0;
 	bool time_refresh = true;
@@ -95,6 +119,10 @@ private:
 	VkCommandPool uploadCmdPool;
 	std::vector<VkFence> imagesInFlight;
 
+	uint32_t RENDERER_THREADS = 3;
+	SimpleThreadPooler* renderer_tpool;
+	std::mutex cpool_mtx;
+
 	void getVkInstance();
 	void createSurface();
 	void getVkLogicalDevice();
@@ -104,6 +132,8 @@ private:
 	void makePLightMaps();
 	void createDepthImage();
 	void createShadowRenderPass();
+	void createGbufferRenderPass();
+	void createAmbientRenderPass();
 	void createFinalRenderPass();
 	void createDescriptorPool();
 	void addDsetLayout(std::string name, uint32_t binding, VkDescriptorType dType, uint32_t dCount, VkShaderStageFlags stageFlag);
@@ -116,20 +146,26 @@ private:
 		std::vector<std::string> reqDSetLayouts,
 		VkOffset2D scissorOffset,
 		VkExtent2D scissorExtent,
-		float VPWidth, float VPHeight,
+		uint32_t VPWidth, uint32_t VPHeight,
 		bool invert_VP_Y = true,
 		std::vector<VkPushConstantRange> pushConstantRanges = {}
 	);
 	void makeFinalPipeline();
+	void makeAmbientPipeline();
+	void makeGbufferPipeline();
 	void makeDLightShadowPipeline();
 	void makePLightShadowPipeline();
 	void createFinalFrameBuffers();
+	void createAmbientFrameBuffers();
+	void createGbufferFrameBuffers();
 	void createShadowFrameBuffers();
 
 	void makeIndirectCmdBuffer();
-	void addDLightCmds(VkCommandBuffer cmdBuffer, uint32_t frameNo);
-	void addPLightCmds(VkCommandBuffer cmdBuffer, uint32_t frameNo);
-	void addFinalMeshCmds(VkCommandBuffer cmdBuffer, uint32_t frameNo);
+	void addDLightCmds(VkCommandBuffer cmdBuffer, size_t frameNo);
+	void addPLightCmds(VkCommandBuffer cmdBuffer, size_t frameNo);
+	void addGbufferCmds(VkCommandBuffer cmdBuffer, size_t frameNo);
+	void addAmbientCmds(VkCommandBuffer cmdBuffer, size_t frameNo);
+	void addFinalMeshCmds(VkCommandBuffer cmdBuffer, size_t frameNo);
 	void createFinalCmdBuffers();
 	void refreshFinalCmdBuffers();
 	void createSyncObjects();
@@ -142,7 +178,13 @@ private:
 
 	void createBasicSamplers();
 	Mesh* addMesh(std::string meshFilePath);
-	GPUTexture2d* loadTexture(std::string texturePath, std::string texSamplerType);
+	GPUImage loadSingleTexture(std::string texPath, VkFormat imgFormat=VK_FORMAT_R8G8B8A8_SRGB);
+	GPUTextureSet* loadObjTextures(
+		std::string colorTexPath,
+		std::string normalTexPath,
+		std::string esTexPath,
+		std::string texSamplerType
+	);
 
 	void cleanupSwapChain(bool destroy_only_swapchain);
 	void cleanup();
